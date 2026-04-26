@@ -44,9 +44,9 @@ func TestParseGovulncheckOutput_MultiLineJSON(t *testing.T) {
     "osv": "GO-2026-4870",
     "fixed_version": "v1.25.9",
     "trace": [
-      {"module": "stdlib", "package": "crypto/tls", "function": "HandshakeContext", "receiver": "*Conn"},
-      {"module": "stdlib", "package": "net/http", "function": "Do", "receiver": "*Client"},
-      {"module": "example.com/myapp", "package": "example.com/myapp/pkg", "function": "Fetch"}
+      {"module": "stdlib", "package": "crypto/tls", "function": "HandshakeContext", "receiver": "*Conn", "position": {"filename": "/usr/local/go/src/crypto/tls/conn.go", "line": 166}},
+      {"module": "stdlib", "package": "net/http", "function": "Do", "receiver": "*Client", "position": {"filename": "/usr/local/go/src/net/http/client.go", "line": 597}},
+      {"module": "example.com/myapp", "package": "example.com/myapp/pkg", "function": "Fetch", "position": {"filename": "/home/user/myapp/pkg/fetch.go", "line": 42}}
     ]
   }
 }
@@ -87,7 +87,7 @@ func TestParseGovulncheckOutput_MultiLineJSON(t *testing.T) {
 		t.Errorf("expected fix version 1.25.9, got %s", vuln.FixVersion)
 	}
 
-	if vuln.CallPath != "*Conn.HandshakeContext → *Client.Do → Fetch" {
+	if vuln.CallPath != "*Conn.HandshakeContext (crypto/tls/conn.go) → *Client.Do (net/http/client.go) → Fetch (example.com/myapp/pkg/fetch.go)" {
 		t.Errorf("unexpected call path: %s", vuln.CallPath)
 	}
 }

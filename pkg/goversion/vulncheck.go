@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -13,13 +14,14 @@ type VulncheckResult struct {
 }
 
 type VulnEntry struct {
-	ID         string
-	Aliases    []string
-	Package    string
-	Reachable  bool
-	ModuleOnly bool
-	FixVersion string
-	CallPath   string
+	ID                string
+	Aliases           []string
+	Package           string
+	Reachable         bool
+	ModuleOnly        bool
+	IntroducedVersion string
+	FixVersion        string
+	CallPath          string
 }
 
 type vulncheckMessage struct {
@@ -136,6 +138,9 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 				if frame.Receiver != "" {
 					name = frame.Receiver + "." + name
 				}
+				if frame.Position != nil && frame.Position.Filename != "" {
+					name += " (" + sourceLocation(frame.Package, frame.Position.Filename) + ")"
+				}
 				callParts = append(callParts, name)
 			} else if frame.Package != "" {
 				isPackageLevel = true
@@ -155,6 +160,9 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 				}
 				for _, r := range affected.Ranges {
 					for _, ev := range r.Events {
+						if ev.Introduced != "" && entry.IntroducedVersion == "" {
+							entry.IntroducedVersion = strings.TrimPrefix(ev.Introduced, "v")
+						}
 						if ev.Fixed != "" && entry.FixVersion == "" {
 							entry.FixVersion = strings.TrimPrefix(ev.Fixed, "v")
 						}
@@ -175,4 +183,16 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 	}
 
 	return result, nil
+}
+
+func sourceLocation(pkg, filename string) string {
+	base := filepath.Base(filename)
+	if pkg == "" {
+		return base
+	}
+	parts := strings.Split(pkg, "/")
+	if len(parts) > 3 {
+		pkg = strings.Join(parts[len(parts)-3:], "/")
+	}
+	return pkg + "/" + base
 }
