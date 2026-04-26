@@ -155,13 +155,14 @@ Scan queries both RHWA and ECOPROJECT Jira projects for CVE tickets matching the
 ### Short table output (`--short`)
 
 ```
-TICKET       VERSION    CLASSIFICATION   PRIORITY    CVSS REACHABILITY   PACKAGE
-───────────────────────────────────────────────────────────────────────────────────────────────
-RHWA-811     v0.4       Not Reachable    Low          7.5 MODULE-LEVEL   crypto/x509
-RHWA-812     v0.4       Misassigned      Misassigned  5.0 N/A            urllib3
-RHWA-813     v0.7       Blocked by Go    Critical     8.1 REACHABLE      crypto/tls
-───────────────────────────────────────────────────────────────────────────────────────────────
-3 assessed, 1 blocked, 1 not-reachable, 1 misassigned
+TICKET             VERSION  CLASSIFICATION   PRIORITY        CVSS REACHABILITY   PACKAGE
+─────────────────────────────────────────────────────────────────────────────────────────────────────────
+RHWA-881           v0.4     Blocked by Go    Low              7.5 TEST-ONLY      crypto/tls
+ECOPROJECT-2468    v0.4     Fixable Now      High             5.3 PACKAGE-LEVEL  golang.org/x/net/html
+RHWA-659           v0.6     Not Go           Manual           7.1 N/A            unknown
+RHWA-685           v0.4     Misassigned      Misassigned      7.5 UNKNOWN        net/url
+─────────────────────────────────────────────────────────────────────────────────────────────────────────
+4 assessed, 1 fixable, 1 blocked, 1 not-go, 1 misassigned
 ```
 
 ## Classification logic

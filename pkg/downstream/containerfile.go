@@ -67,9 +67,13 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 		ref = "main"
 	}
 
+	distgitName := operatorName + "-operator"
+	if strings.HasSuffix(operatorName, "-operator") {
+		distgitName = operatorName
+	}
 	candidates := []string{
 		fmt.Sprintf("Containerfile.%s", operatorName),
-		fmt.Sprintf("distgit/containers/%s-operator/Dockerfile.in", operatorName),
+		fmt.Sprintf("distgit/containers/%s/Dockerfile.in", distgitName),
 	}
 
 	var lastErr error

@@ -180,17 +180,18 @@ func writeBatchSummary(path string, results []*types.Result) error {
 func printScanTable(results []*types.Result, errors []string) {
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 
-	headerFmt := "%-12s %-10s %-16s %-10s %5s %-14s %s\n"
-	rowFmt := "%-12s %-10s %-16s %-10s %5.1f %-14s %s\n"
+	headerFmt := "%-18s %-8s %-16s %-14s %5s %-14s %s\n"
+	rowFmt := "%-18s %-8s %-16s %-14s %5.1f %-14s %s\n"
+	lineWidth := 105
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
 			"TICKET", "VERSION", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
-		fmt.Println(strings.Repeat("─", 95))
+		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(headerFmt,
 			"TICKET", "VERSION", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
-		fmt.Println(strings.Repeat("-", 95))
+		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
 	counts := map[types.Classification]int{}
@@ -198,7 +199,7 @@ func printScanTable(results []*types.Result, errors []string) {
 		ticket := extractTicketID(r.Source.TicketID)
 		version := extractVersion(r.Source.AffectedOperatorVersion)
 		class := string(r.Recommendation.Classification)
-		priority := string(r.Recommendation.Priority)
+		priority := shortPriority(r.Recommendation.Priority)
 		cvss := r.Vulnerability.Severity
 		reach := shortReachability(r)
 		pkg := shortPackage(r.Vulnerability.Package)
@@ -208,7 +209,7 @@ func printScanTable(results []*types.Result, errors []string) {
 		if isTTY {
 			classColor := colorForClassification(r.Recommendation.Classification)
 			prioColor := colorForPriority(r.Recommendation.Priority)
-			fmt.Printf("%-12s %-10s %s%-16s%s %s%-10s%s %5.1f %-14s %s\n",
+			fmt.Printf("%-18s %-8s %s%-16s%s %s%-14s%s %5.1f %-14s %s\n",
 				ticket, version,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
@@ -219,9 +220,9 @@ func printScanTable(results []*types.Result, errors []string) {
 	}
 
 	if isTTY {
-		fmt.Println(strings.Repeat("─", 95))
+		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
-		fmt.Println(strings.Repeat("-", 95))
+		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
 	var summary []string
@@ -258,7 +259,14 @@ func extractVersion(s string) string {
 	if i := strings.Index(s, ":"); i >= 0 {
 		return s[i+1:]
 	}
-	return s
+	return ""
+}
+
+func shortPriority(p types.Priority) string {
+	if p == types.PriorityManual {
+		return "Manual"
+	}
+	return string(p)
 }
 
 func shortReachability(r *types.Result) string {
