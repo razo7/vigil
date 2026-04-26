@@ -67,8 +67,7 @@ func LookupDownstreamComponent(operatorName, operatorVersion string) (*Downstrea
 				if strings.Contains(image, "rhel8") {
 					rhelBase = "rhel8"
 				}
-				catalogURL := fmt.Sprintf("https://catalog.redhat.com/software/containers/%s",
-					strings.TrimPrefix(image, "registry.redhat.io/"))
+				catalogURL := fmt.Sprintf("https://catalog.redhat.com/software/containers/search?q=%s", name)
 				return &DownstreamComponent{
 					Name:       name,
 					Registry:   image,

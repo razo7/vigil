@@ -54,6 +54,11 @@ func TestExtractGoVersion(t *testing.T) {
 			"1.24.11",
 		},
 		{
+			"openshift golang builder with v prefix",
+			"FROM registry-proxy.engineering.redhat.com/rh-osbs/openshift-golang-builder:v1.20.12-202504121010.g92d4921.el8 AS builder\nRUN go build",
+			"1.20.12",
+		},
+		{
 			"no golang in FROM",
 			"FROM registry.access.redhat.com/ubi9/ubi-minimal:latest\nCOPY bin/manager /manager",
 			"",

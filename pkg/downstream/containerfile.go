@@ -12,7 +12,7 @@ import (
 
 const defaultGitLabHost = "https://gitlab.cee.redhat.com"
 
-var goVersionRe = regexp.MustCompile(`golang[:\-](\d+\.\d+(?:\.\d+)?)`)
+var goVersionRe = regexp.MustCompile(`golang[-\w]*[:\-]v?(\d+\.\d+(?:\.\d+)?)`)
 
 type ContainerfileInfo struct {
 	GoVersion     string
