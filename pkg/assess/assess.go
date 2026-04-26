@@ -202,11 +202,14 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 }
 
 func buildBranchAnalysis(branch, goVersion, goModLink string, vulnEntry *goversion.VulnEntry, isGoVuln bool, ticket *jira.TicketInfo, cveInfo *cve.CVEInfo) *types.BranchAnalysis {
+	goVersionStr := goVersion
+	if goModLink != "" {
+		goVersionStr = fmt.Sprintf("%s (%s)", goVersion, goModLink)
+	}
 	ba := &types.BranchAnalysis{
 		Upstream: types.UpstreamInfo{
 			Branch:    branch,
-			GoVersion: goVersion,
-			GoModLink: goModLink,
+			GoVersion: goVersionStr,
 		},
 	}
 
@@ -251,8 +254,12 @@ func buildDownstreamInfo(operatorName string, dsInfo *downstream.ContainerfileIn
 	populated := false
 
 	if dsInfo != nil && dsInfo.GoVersion != "" {
-		ds.GoVersion = dsInfo.GoVersion
-		ds.GoLink = buildDownstreamLink(operatorName, dsInfo)
+		link := buildDownstreamLink(operatorName, dsInfo)
+		if link != "" {
+			ds.GoVersion = fmt.Sprintf("%s (%s)", dsInfo.GoVersion, link)
+		} else {
+			ds.GoVersion = dsInfo.GoVersion
+		}
 		populated = true
 	}
 
@@ -275,19 +282,25 @@ func assessLatestBranch(repoPath, cveID, component, operatorName, imageName stri
 		return nil
 	}
 
+	goVersionStr := goMod.EffectiveVersion()
+	if link := buildGoModLink(component, "main", goMod.EffectiveVersionLine()); link != "" {
+		goVersionStr = fmt.Sprintf("%s (%s)", goVersionStr, link)
+	}
 	ba := &types.BranchAnalysis{
 		Upstream: types.UpstreamInfo{
 			Branch:    "main",
-			GoVersion: goMod.EffectiveVersion(),
-			GoModLink: buildGoModLink(component, "main", goMod.EffectiveVersionLine()),
+			GoVersion: goVersionStr,
 		},
 	}
 
 	dsInfo, err := downstream.FetchGoVersion(operatorName, imageName, "main")
 	if err == nil && dsInfo.GoVersion != "" {
+		dsGoVersion := dsInfo.GoVersion
+		if link := buildDownstreamLink(operatorName, dsInfo); link != "" {
+			dsGoVersion = fmt.Sprintf("%s (%s)", dsGoVersion, link)
+		}
 		ba.Downstream = &types.DownstreamInfo{
-			GoVersion: dsInfo.GoVersion,
-			GoLink:    buildDownstreamLink(operatorName, dsInfo),
+			GoVersion: dsGoVersion,
 		}
 	}
 
@@ -431,9 +444,9 @@ func formatAffectedVersions(introduced, fixed string) string {
 	}
 	if fixed != "" {
 		if introduced != "" && introduced != "0" {
-			return fmt.Sprintf(">= %s, fixed in %s", introduced, fixed)
+			return fmt.Sprintf(">= %s, < %s", introduced, fixed)
 		}
-		return fmt.Sprintf("fixed in %s", fixed)
+		return fmt.Sprintf("< %s", fixed)
 	}
 	return fmt.Sprintf(">= %s", introduced)
 }

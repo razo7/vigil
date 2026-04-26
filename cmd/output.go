@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"golang.org/x/term"
@@ -70,6 +71,10 @@ func colorizeLine(line string) string {
 		if sm := jsonStringRe.FindStringSubmatch(line); sm != nil {
 			val := sm[1]
 			comma := sm[2]
+			if key == "call_path" {
+				colored += " " + `"` + colorizeCallPath(val) + `"` + colorReset + comma
+				return colored
+			}
 			colored += " " + colorForValue(key, val) + `"` + val + `"` + colorReset + comma
 			return colored
 		}
@@ -150,7 +155,7 @@ func colorForValue(key, val string) string {
 		}
 		return colorLow
 	case "action":
-		return "\033[1;33m" // bold yellow
+		return "\033[1;97;44m" // bold bright white on blue background
 	case "due_date":
 		return colorForDate(val)
 	}
@@ -165,6 +170,18 @@ func colorizeOCPSupport(val string) string {
 		ver := parts[3]
 		return colorMagBold + tier + colorReset + sep + colorCyanBold + ver + colorReset
 	})
+}
+
+func colorizeCallPath(val string) string {
+	parts := strings.Split(val, " → ")
+	if len(parts) <= 1 {
+		return colorString + val
+	}
+	for i := range parts[:len(parts)-1] {
+		parts[i] = colorString + parts[i]
+	}
+	parts[len(parts)-1] = "\033[1;37m" + parts[len(parts)-1] // bold white for last function
+	return strings.Join(parts, colorReset+" → ")
 }
 
 func colorForDate(val string) string {

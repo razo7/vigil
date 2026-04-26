@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -139,7 +138,7 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 					name = frame.Receiver + "." + name
 				}
 				if frame.Position != nil && frame.Position.Filename != "" {
-					name += " (" + sourceLocation(frame.Package, frame.Position.Filename) + ")"
+					name += " (" + frame.Position.Filename + ")"
 				}
 				callParts = append(callParts, name)
 			} else if frame.Package != "" {
@@ -183,16 +182,4 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 	}
 
 	return result, nil
-}
-
-func sourceLocation(pkg, filename string) string {
-	base := filepath.Base(filename)
-	if pkg == "" {
-		return base
-	}
-	parts := strings.Split(pkg, "/")
-	if len(parts) > 3 {
-		pkg = strings.Join(parts[len(parts)-3:], "/")
-	}
-	return pkg + "/" + base
 }

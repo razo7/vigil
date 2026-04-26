@@ -62,12 +62,10 @@ type VulnInfo struct {
 type UpstreamInfo struct {
 	Branch    string `json:"branch"`
 	GoVersion string `json:"go_version"`
-	GoModLink string `json:"gomod_link,omitempty"`
 }
 
 type DownstreamInfo struct {
 	GoVersion     string `json:"go_version,omitempty"`
-	GoLink        string `json:"go_link,omitempty"`
 	ComponentName string `json:"component_name,omitempty"`
 	ComponentURL  string `json:"component_url,omitempty"`
 	RHELBase      string `json:"rhel_base,omitempty"`

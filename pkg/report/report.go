@@ -100,19 +100,11 @@ Assessed: %s by Vigil %s
 func formatBranchSection(label string, ba *types.BranchAnalysis, classification types.Classification) string {
 	section := fmt.Sprintf("\n── %s: %s ──\n", label, ba.Upstream.Branch)
 
-	section += fmt.Sprintf("  Upstream Go:  %s", ba.Upstream.GoVersion)
-	if ba.Upstream.GoModLink != "" {
-		section += fmt.Sprintf(" (%s)", ba.Upstream.GoModLink)
-	}
-	section += "\n"
+	section += fmt.Sprintf("  Upstream Go:  %s\n", ba.Upstream.GoVersion)
 
 	if ba.Downstream != nil {
 		if ba.Downstream.GoVersion != "" {
-			section += fmt.Sprintf("  Downstream Go: %s", ba.Downstream.GoVersion)
-			if ba.Downstream.GoLink != "" {
-				section += fmt.Sprintf(" (%s)", ba.Downstream.GoLink)
-			}
-			section += "\n"
+			section += fmt.Sprintf("  Downstream Go: %s\n", ba.Downstream.GoVersion)
 		}
 		if ba.Downstream.ComponentName != "" {
 			section += fmt.Sprintf("  Component:    %s (%s)\n", ba.Downstream.ComponentName, ba.Downstream.RHELBase)
