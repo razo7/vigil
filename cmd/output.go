@@ -71,13 +71,17 @@ func colorizeLine(line string) string {
 		key := line[m[4]:m[5]]
 		rest := line[m[1]:]
 
-		colored := indent + colorKey + `"` + key + `"` + colorReset + ":"
+		keyColor := colorKey
+		if key == "recommendation" || key == "action" {
+			keyColor = "\033[1;97;44m" // bold bright white on blue
+		}
+		colored := indent + keyColor + `"` + key + `"` + colorReset + ":"
 
 		if sm := jsonStringRe.FindStringSubmatch(line); sm != nil {
 			val := sm[1]
 			comma := sm[2]
-			if key == "call_path" {
-				colored += " " + `"` + colorizeCallPath(val) + `"` + colorReset + comma
+			if key == "action" {
+				colored += " " + colorString + `"` + val + `"` + colorReset + comma
 				return colored
 			}
 			colored += " " + colorForValue(key, val) + `"` + val + `"` + colorReset + comma
@@ -106,6 +110,9 @@ func colorizeLine(line string) string {
 		comma := sm[3]
 		if ocpTierRe.MatchString(val) {
 			return indent + `"` + colorizeOCPSupport(val) + `"` + comma
+		}
+		if strings.Contains(val, " → ") {
+			return indent + `"` + colorizeCallPath(val) + `"` + colorReset + comma
 		}
 		return indent + colorString + `"` + val + `"` + colorReset + comma
 	}
@@ -159,8 +166,6 @@ func colorForValue(key, val string) string {
 			return colorHigh
 		}
 		return colorLow
-	case "action":
-		return "\033[1;97;44m" // bold bright white on blue background
 	case "due_date":
 		return colorForDate(val)
 	}

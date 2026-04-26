@@ -38,25 +38,30 @@ const (
 
 type SourceInfo struct {
 	TicketID          string   `json:"ticket_id"`
-	Operator          string   `json:"operator"`
-	OperatorVersion   string   `json:"operator_version"`
+	AffectedOperatorVersion string `json:"affected operator version"`
 	Reporter          string   `json:"reporter,omitempty"`
 	Assignee          string   `json:"assignee,omitempty"`
 	DueDate           string   `json:"due_date,omitempty"`
 	JiraPriority      string   `json:"jira_priority,omitempty"`
 	Labels            string   `json:"labels,omitempty"`
-	AffectsVersions   string   `json:"affects_versions,omitempty"`
+	AffectsRHWAVersions string  `json:"affects_rhwa_versions,omitempty"`
 	TicketFixVersions string   `json:"ticket_fix_versions,omitempty"`
-	OCPSupport        []string `json:"ocp_support"`
+	OCPSupport        []string `json:"rhwa-ocp_support"`
 }
 
 type VulnInfo struct {
-	CVEID          string   `json:"cve_id"`
-	Severity       float64  `json:"severity"`
-	SeverityLabel  string   `json:"severity_label"`
-	CWE            string   `json:"cwe,omitempty"`
-	CWEDescription string   `json:"cwe_description,omitempty"`
-	References     []string `json:"references,omitempty"`
+	CVEID              string   `json:"cve_id"`
+	Description        string   `json:"description,omitempty"`
+	Severity           float64  `json:"severity"`
+	SeverityLabel      string   `json:"severity_label"`
+	VulnID             string   `json:"vuln_id,omitempty"`
+	Package            string   `json:"package,omitempty"`
+	FixVersion         string   `json:"fix_version,omitempty"`
+	FixFunctions       string   `json:"fix_functions,omitempty"`
+	AffectedGoVersions string   `json:"affected_go_versions,omitempty"`
+	CWE                string   `json:"cwe,omitempty"`
+	CWEDescription     string   `json:"cwe_description,omitempty"`
+	References         string   `json:"references,omitempty"`
 }
 
 type UpstreamInfo struct {
@@ -65,26 +70,27 @@ type UpstreamInfo struct {
 }
 
 type DownstreamInfo struct {
-	GoVersion     string `json:"go_version,omitempty"`
-	ComponentName string `json:"component_name,omitempty"`
-	ComponentURL  string `json:"component_url,omitempty"`
-	RHELBase      string `json:"rhel_base,omitempty"`
+	Branch    string `json:"branch,omitempty"`
+	GoVersion string `json:"go_version,omitempty"`
 }
 
 type BranchAnalysis struct {
-	Upstream           UpstreamInfo    `json:"upstream"`
-	Downstream         *DownstreamInfo `json:"downstream,omitempty"`
-	VulnID             string          `json:"vuln_id,omitempty"`
-	Package            string          `json:"package,omitempty"`
-	FixVersion         string          `json:"fix_version,omitempty"`
-	AffectedGoVersions string          `json:"affected_go_versions,omitempty"`
-	Reachability       string          `json:"reachability"`
-	CallPath           string          `json:"call_path,omitempty"`
+	Reachability     string          `json:"reachability"`
+	CatalogComponent string          `json:"catalog_component,omitempty"`
+	Upstream         UpstreamInfo    `json:"upstream"`
+	Downstream       *DownstreamInfo `json:"downstream,omitempty"`
+	CallPaths        []string        `json:"call_paths,omitempty"`
+}
+
+type FixUpstreamInfo struct {
+	Reachability string   `json:"reachability"`
+	GoVersion    string   `json:"go_version"`
+	CallPaths    []string `json:"call_paths,omitempty"`
 }
 
 type AnalysisInfo struct {
-	ReleaseBranch *BranchAnalysis `json:"release_branch,omitempty"`
-	LatestBranch  *BranchAnalysis `json:"latest_branch,omitempty"`
+	ReleaseBranch *BranchAnalysis  `json:"release_branch,omitempty"`
+	FixUpstream   *FixUpstreamInfo `json:"fix_upstream?,omitempty"`
 }
 
 type RecommendationInfo struct {

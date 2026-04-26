@@ -29,21 +29,44 @@ func TestClassify_FixableNow(t *testing.T) {
 	}
 }
 
-func TestClassify_BlockedByGo(t *testing.T) {
+func TestClassify_BlockedByGo_HighSeverity(t *testing.T) {
 	in := Input{
 		IsGoVuln:     true,
 		IsReachable:  true,
 		FixGoVersion: "1.25.9",
 		CurrentGo:    "1.25.3",
 		DownstreamGo: "1.25.3",
+		CVSS:         8.0,
+		SupportPhase: types.PhaseGA,
 	}
 
 	class, priority, _ := Classify(in)
 	if class != types.BlockedByGo {
 		t.Errorf("expected blocked-by-go, got %s", class)
 	}
-	if priority != types.PriorityBlocked {
-		t.Errorf("expected Blocked, got %s", priority)
+	if priority != types.PriorityCritical {
+		t.Errorf("expected Critical (reachable + high CVSS + GA), got %s", priority)
+	}
+}
+
+func TestClassify_BlockedByGo_LowPriority(t *testing.T) {
+	in := Input{
+		IsGoVuln:     true,
+		IsReachable:  false,
+		IsPackageLevel: true,
+		FixGoVersion: "1.25.9",
+		CurrentGo:    "1.20.0",
+		DownstreamGo: "1.20.0",
+		CVSS:         5.0,
+		SupportPhase: types.PhaseMaintenance,
+	}
+
+	class, priority, _ := Classify(in)
+	if class != types.BlockedByGo {
+		t.Errorf("expected blocked-by-go, got %s", class)
+	}
+	if priority != types.PriorityLow {
+		t.Errorf("expected Low (not reachable + low CVSS + maintenance), got %s", priority)
 	}
 }
 
@@ -115,24 +138,40 @@ func TestClassify_MisassignedBundle(t *testing.T) {
 	}
 }
 
-func TestClassify_MisassignedRHEL8(t *testing.T) {
+func TestClassify_MisassignedRHEL8_EOL(t *testing.T) {
 	in := Input{
 		IsGoVuln:       true,
 		ImageName:      "far-rhel8-operator",
 		OperatorName:   "fence-agents-remediation",
 		AffectsVersion: "0.4.0",
+		SupportPhase:   types.PhaseEOL,
 	}
 
 	class, _, reason := Classify(in)
 	if class != types.Misassigned {
-		t.Errorf("expected misassigned for RHEL8 image with old version, got %s", class)
+		t.Errorf("expected misassigned for RHEL8 EOL image, got %s", class)
 	}
 	if reason == "" {
-		t.Error("expected misassignment reason for RHEL8")
+		t.Error("expected misassignment reason for RHEL8 EOL")
 	}
 }
 
-func TestClassify_RHEL8_CurrentVersion_NotMisassigned(t *testing.T) {
+func TestClassify_RHEL8_NotEOL_NotMisassigned(t *testing.T) {
+	in := Input{
+		IsGoVuln:       true,
+		ImageName:      "far-rhel8-operator",
+		OperatorName:   "fence-agents-remediation",
+		AffectsVersion: "0.4.0",
+		SupportPhase:   types.PhaseEUS1,
+	}
+
+	class, _, _ := Classify(in)
+	if class == types.Misassigned {
+		t.Errorf("RHEL8 image with EUS1 support should NOT be misassigned, got %s", class)
+	}
+}
+
+func TestClassify_RHEL8_GA_NotMisassigned(t *testing.T) {
 	in := Input{
 		IsGoVuln:       true,
 		IsReachable:    true,
@@ -148,7 +187,7 @@ func TestClassify_RHEL8_CurrentVersion_NotMisassigned(t *testing.T) {
 
 	class, _, _ := Classify(in)
 	if class == types.Misassigned {
-		t.Errorf("version 0.6.0 >= threshold 0.5.0 should NOT be misassigned, got %s", class)
+		t.Errorf("RHEL8 image with GA support should NOT be misassigned, got %s", class)
 	}
 }
 

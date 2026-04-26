@@ -87,8 +87,9 @@ func TestParseGovulncheckOutput_MultiLineJSON(t *testing.T) {
 		t.Errorf("expected fix version 1.25.9, got %s", vuln.FixVersion)
 	}
 
-	if vuln.CallPath != "*Conn.HandshakeContext (/usr/local/go/src/crypto/tls/conn.go) → *Client.Do (/usr/local/go/src/net/http/client.go) → Fetch (/home/user/myapp/pkg/fetch.go)" {
-		t.Errorf("unexpected call path: %s", vuln.CallPath)
+	expectedPath := "*Conn.HandshakeContext (/usr/local/go/src/crypto/tls/conn.go) → *Client.Do (/usr/local/go/src/net/http/client.go) → Fetch (/home/user/myapp/pkg/fetch.go)"
+	if len(vuln.CallPaths) != 1 || vuln.CallPaths[0] != expectedPath {
+		t.Errorf("unexpected call paths: %v", vuln.CallPaths)
 	}
 }
 

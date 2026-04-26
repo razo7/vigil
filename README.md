@@ -89,31 +89,56 @@ Supported components: `FAR`, `SNR`, `NHC`, `NMO`, `MDR`.
 
 ```json
 {
-  "ticket_id": "RHWA-881",
-  "cve_id": "CVE-2026-32283",
-  "cve_source": "https://www.cve.org/CVERecord?id=CVE-2026-32283",
-  "severity": 7.5,
-  "severity_label": "HIGH",
-  "package": "crypto/tls",
-  "classification": "misassigned",
-  "priority": "Misassigned",
-  "operator_version": "0.4",
-  "ocp_version": "4.16",
-  "support_phase": "EUS2",
-  "reachability": "REACHABLE",
-  "vuln_id": "GO-2026-4870",
-  "fix_version": "1.25.9",
-  "current_go": "1.20",
-  "downstream_go": "1.20",
-  "call_path": "*Conn.HandshakeContext -> ... -> *Request.Stream -> GetLogs",
-  "recommendation": "Ticket appears misassigned: CVE targets RHEL8-based image for unsupported operator version.",
-  "main_branch": {
-    "reachability": "REACHABLE",
-    "vuln_id": "GO-2026-4870",
-    "fix_version": "1.25.9",
-    "current_go": "1.25.3",
-    "package": "crypto/tls"
-  }
+  "source": {
+    "ticket_id": "RHWA-811 (https://redhat.atlassian.net/browse/RHWA-811)",
+    "affected operator version": "fence-agents-remediation:v0.4",
+    "reporter": "Dhananjay Arunesh",
+    "assignee": "Or Raz",
+    "due_date": "2026-04-20",
+    "jira_priority": "Undefined",
+    "affects_rhwa_versions": "rhwa-24.2",
+    "rhwa-ocp_support": [
+      "Platform Aligned OCP 4.16: EUS1 until 2026-06-27, EOL 2027-06-27"
+    ]
+  },
+  "vulnerability": {
+    "cve_id": "CVE-2026-27137 (https://www.cve.org/CVERecord?id=CVE-2026-27137)",
+    "description": "Incorrect enforcement of email constraints in crypto/x509.",
+    "severity": 7.5,
+    "severity_label": "HIGH",
+    "vuln_id": "GO-2026-4599",
+    "package": "crypto/x509",
+    "fix_version": "1.26.1 (https://go-review.googlesource.com/c/go/+/752182)",
+    "fix_functions": "src/crypto/x509/constraints.go:query, src/crypto/x509/constraints.go:checkConstraints",
+    "affected_go_versions": ">= 1.26.0-0, < 1.26.1 (https://pkg.go.dev/vuln/GO-2026-4599)",
+    "cwe": "CWE-295",
+    "references": "https://go.dev/issue/77952, https://pkg.go.dev/vuln/GO-2026-4599"
+  },
+  "analysis": {
+    "release_branch": {
+      "reachability": "MODULE-LEVEL (in go.mod but package not imported)",
+      "catalog_component": "fence-agents-remediation-rhel8-operator (https://catalog.redhat.com/...)",
+      "upstream": {
+        "branch": "release-0.4",
+        "go_version": "1.20 (https://github.com/medik8s/fence-agents-remediation/blob/release-0.4/go.mod#L3)"
+      },
+      "downstream": {
+        "branch": "rhwa-far-0.4-rhel-8",
+        "go_version": "1.20.12 (https://gitlab.cee.redhat.com/dragonfly/...)"
+      }
+    },
+    "fix_upstream?": {
+      "reachability": "MODULE-LEVEL (in go.mod but package not imported)",
+      "go_version": "1.25.3 (https://github.com/medik8s/fence-agents-remediation/blob/main/go.mod#L7)"
+    }
+  },
+  "recommendation": {
+    "classification": "Not Reachable",
+    "priority": "Low",
+    "action": "Vulnerable code path not called. Low priority — bump if easy, otherwise document."
+  },
+  "assessed_at": "2026-04-26T13:00:00Z",
+  "vigil_version": "0.1.0"
 }
 ```
 
@@ -125,13 +150,12 @@ Supported components: `FAR`, `SNR`, `NHC`, `NMO`, `MDR`.
 | `Blocked by Go` | Reachable vuln + fix needs newer Go than downstream provides | Wait for base image update |
 | `Not Reachable` | Vuln in dependency but govulncheck finds no call path | Low priority, document |
 | `Not Go` | Non-Go CVE (Python, C library, etc.) | Manual review |
-| `Misassigned` | Wrong image (bundle) or unsupported version (RHEL8) | Recommend reassignment |
+| `Misassigned` | Wrong image (bundle) or EOL RHEL8 version | Recommend reassignment |
 
 ### Misassignment detection
 
 - **Bundle images**: Go CVE assigned to a bundle image (OLM metadata only, no Go runtime)
-- **RHEL8 thresholds**: Old operator versions below the RHEL8-to-RHEL9 transition:
-  - FAR < 0.5.0, SNR < 0.10.0, NHC < 0.9.0, NMO < 5.4.0, MDR < 0.4.0
+- **EOL RHEL8 images**: RHEL8-based image whose OCP version has reached end-of-life
 
 ### Priority formula
 
@@ -166,7 +190,7 @@ Terminal output is colorized when stdout is a TTY. Use `--color` to force colors
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `JIRA_API_TOKEN` | Yes | — | Jira API token for ticket access |
-| `JIRA_EMAIL` | No | `oraz@redhat.com` | Email for Jira auth |
+| `JIRA_EMAIL` | Yes | — | Email for Jira auth |
 | `JIRA_BASE_URL` | No | `https://redhat.atlassian.net` | Jira instance URL |
 | `GITLAB_TOKEN` or `GITLAB_PRIVATE_TOKEN` | No | — | GitLab token for downstream Containerfile access |
 | `GITLAB_HOST` | No | `https://gitlab.cee.redhat.com` | GitLab instance URL |

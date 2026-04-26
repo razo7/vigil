@@ -25,11 +25,25 @@ CVE:            %s`,
 CWE:            %s`, cwe)
 	}
 	comment += fmt.Sprintf(`
-Severity:       %.1f (%s)
-
-Operator:       %s %s`,
+Severity:       %.1f (%s)`,
 		r.Vulnerability.Severity, r.Vulnerability.SeverityLabel,
-		r.Source.Operator, r.Source.OperatorVersion,
+	)
+	if r.Vulnerability.VulnID != "" {
+		comment += fmt.Sprintf("\nVuln ID:        %s", r.Vulnerability.VulnID)
+	}
+	if r.Vulnerability.Package != "" {
+		comment += fmt.Sprintf("\nPackage:        %s", r.Vulnerability.Package)
+	}
+	if r.Vulnerability.AffectedGoVersions != "" {
+		comment += fmt.Sprintf("\nAffected Go:    %s", r.Vulnerability.AffectedGoVersions)
+	}
+	if r.Vulnerability.FixVersion != "" {
+		comment += fmt.Sprintf("\nFix version:    %s", r.Vulnerability.FixVersion)
+	}
+	comment += fmt.Sprintf(`
+
+Affected:       %s`,
+		r.Source.AffectedOperatorVersion,
 	)
 
 	if len(r.Source.OCPSupport) > 0 {
@@ -58,8 +72,8 @@ Operator:       %s %s`,
 	if r.Source.Labels != "" {
 		comment += fmt.Sprintf("Labels:         %s\n", r.Source.Labels)
 	}
-	if r.Source.AffectsVersions != "" {
-		comment += fmt.Sprintf("Affects:        %s\n", r.Source.AffectsVersions)
+	if r.Source.AffectsRHWAVersions != "" {
+		comment += fmt.Sprintf("Affects:        %s\n", r.Source.AffectsRHWAVersions)
 	}
 	if r.Source.TicketFixVersions != "" {
 		comment += fmt.Sprintf("Fix Versions:   %s\n", r.Source.TicketFixVersions)
@@ -68,15 +82,12 @@ Operator:       %s %s`,
 	if r.Analysis.ReleaseBranch != nil {
 		comment += formatBranchSection("Release Branch", r.Analysis.ReleaseBranch, r.Recommendation.Classification)
 	}
-	if r.Analysis.LatestBranch != nil {
-		comment += formatBranchSection("Latest Branch", r.Analysis.LatestBranch, r.Recommendation.Classification)
+	if r.Analysis.FixUpstream != nil {
+		comment += formatFixUpstreamSection(r.Analysis.FixUpstream, r.Recommendation.Classification)
 	}
 
-	if len(r.Vulnerability.References) > 0 {
-		comment += "\nReferences:\n"
-		for _, ref := range r.Vulnerability.References {
-			comment += fmt.Sprintf("  - %s\n", ref)
-		}
+	if r.Vulnerability.References != "" {
+		comment += fmt.Sprintf("\nReferences:     %s\n", r.Vulnerability.References)
 	}
 
 	comment += fmt.Sprintf(`
@@ -102,35 +113,37 @@ func formatBranchSection(label string, ba *types.BranchAnalysis, classification 
 
 	section += fmt.Sprintf("  Upstream Go:  %s\n", ba.Upstream.GoVersion)
 
+	if ba.CatalogComponent != "" {
+		section += fmt.Sprintf("  Component:    %s\n", ba.CatalogComponent)
+	}
+
 	if ba.Downstream != nil {
+		if ba.Downstream.Branch != "" {
+			section += fmt.Sprintf("  Downstream:   %s\n", ba.Downstream.Branch)
+		}
 		if ba.Downstream.GoVersion != "" {
 			section += fmt.Sprintf("  Downstream Go: %s\n", ba.Downstream.GoVersion)
 		}
-		if ba.Downstream.ComponentName != "" {
-			section += fmt.Sprintf("  Component:    %s (%s)\n", ba.Downstream.ComponentName, ba.Downstream.RHELBase)
-			if ba.Downstream.ComponentURL != "" {
-				section += fmt.Sprintf("                %s\n", ba.Downstream.ComponentURL)
-			}
-		}
-	}
-
-	if ba.VulnID != "" {
-		section += fmt.Sprintf("  Vuln ID:      %s\n", ba.VulnID)
-	}
-	if ba.Package != "" {
-		section += fmt.Sprintf("  Package:      %s\n", ba.Package)
-	}
-	if ba.AffectedGoVersions != "" {
-		section += fmt.Sprintf("  Affected Go:  %s\n", ba.AffectedGoVersions)
-	}
-	if ba.FixVersion != "" {
-		section += fmt.Sprintf("  Fix version:  %s\n", ba.FixVersion)
 	}
 
 	if classification != types.Misassigned {
 		section += fmt.Sprintf("  Reachability: %s\n", ba.Reachability)
-		if ba.CallPath != "" {
-			section += fmt.Sprintf("  Call path:    %s\n", ba.CallPath)
+		for i, cp := range ba.CallPaths {
+			section += fmt.Sprintf("  Call path %d:  %s\n", i+1, cp)
+		}
+	}
+
+	return section
+}
+
+func formatFixUpstreamSection(fu *types.FixUpstreamInfo, classification types.Classification) string {
+	section := "\n── Fix Upstream (main) ──\n"
+	section += fmt.Sprintf("  Go version:   %s\n", fu.GoVersion)
+
+	if classification != types.Misassigned {
+		section += fmt.Sprintf("  Reachability: %s\n", fu.Reachability)
+		for i, cp := range fu.CallPaths {
+			section += fmt.Sprintf("  Call path %d:  %s\n", i+1, cp)
 		}
 	}
 
@@ -151,20 +164,17 @@ type SanitizedSummary struct {
 }
 
 func WriteSanitizedSummary(path string, r *types.Result) error {
-	ba := r.Analysis.ReleaseBranch
-	if ba == nil {
-		ba = r.Analysis.LatestBranch
-	}
-
 	summary := SanitizedSummary{
-		Operator:   r.Source.Operator,
+		Operator:   r.Source.AffectedOperatorVersion,
 		AssessedAt: r.AssessedAt.Format("2006-01-02T15:04:05Z"),
 		Total:      1,
 	}
-	if ba != nil {
-		summary.CurrentGo = ba.Upstream.GoVersion
-		summary.NeededGo = ba.FixVersion
+	if r.Analysis.ReleaseBranch != nil {
+		summary.CurrentGo = r.Analysis.ReleaseBranch.Upstream.GoVersion
+	} else if r.Analysis.FixUpstream != nil {
+		summary.CurrentGo = r.Analysis.FixUpstream.GoVersion
 	}
+	summary.NeededGo = r.Vulnerability.FixVersion
 
 	switch r.Recommendation.Classification {
 	case types.FixableNow:

@@ -11,10 +11,7 @@ import (
 	"strings"
 )
 
-const (
-	defaultBaseURL = "https://redhat.atlassian.net"
-	defaultEmail   = "oraz@redhat.com"
-)
+const defaultBaseURL = "https://redhat.atlassian.net"
 
 var (
 	cvePattern   = regexp.MustCompile(`CVE-\d{4}-\d+`)
@@ -36,7 +33,7 @@ func NewClient() (*Client, error) {
 
 	email := os.Getenv("JIRA_EMAIL")
 	if email == "" {
-		email = defaultEmail
+		return nil, fmt.Errorf("JIRA_EMAIL environment variable is required")
 	}
 
 	baseURL := os.Getenv("JIRA_BASE_URL")

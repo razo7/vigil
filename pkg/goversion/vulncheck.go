@@ -12,15 +12,21 @@ type VulncheckResult struct {
 	Vulns []VulnEntry
 }
 
+type AffectedRange struct {
+	Introduced string
+	Fixed      string
+}
+
 type VulnEntry struct {
-	ID                string
-	Aliases           []string
-	Package           string
-	Reachable         bool
-	ModuleOnly        bool
-	IntroducedVersion string
-	FixVersion        string
-	CallPath          string
+	ID              string
+	Aliases         []string
+	Package         string
+	Reachable       bool
+	ModuleOnly      bool
+	AffectedRanges  []AffectedRange
+	FixVersion      string
+	CallPaths       []string
+	TestOnly        bool
 }
 
 type vulncheckMessage struct {
@@ -92,7 +98,7 @@ func RunGovulncheck(repoPath string) (*VulncheckResult, error) {
 func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 	result := &VulncheckResult{}
 	osvMap := make(map[string]*vulncheckOSV)
-	findingsMap := make(map[string]*vulncheckFinding)
+	findingsMap := make(map[string][]*vulncheckFinding)
 
 	dec := json.NewDecoder(bytes.NewReader(data))
 	for {
@@ -110,14 +116,11 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 		}
 
 		if msg.Finding != nil {
-			existing, ok := findingsMap[msg.Finding.OSV]
-			if !ok || len(msg.Finding.Trace) > len(existing.Trace) {
-				findingsMap[msg.Finding.OSV] = msg.Finding
-			}
+			findingsMap[msg.Finding.OSV] = append(findingsMap[msg.Finding.OSV], msg.Finding)
 		}
 	}
 
-	for id, finding := range findingsMap {
+	for id, findings := range findingsMap {
 		entry := VulnEntry{
 			ID: id,
 		}
@@ -128,28 +131,52 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 
 		isReachable := false
 		isPackageLevel := false
-		var callParts []string
+		allTestOnly := true
+		seen := make(map[string]bool)
+		var allPaths []string
 
-		for _, frame := range finding.Trace {
-			if frame.Function != "" {
-				isReachable = true
-				name := frame.Function
-				if frame.Receiver != "" {
-					name = frame.Receiver + "." + name
+		for _, finding := range findings {
+			var callParts []string
+			var lastFilename string
+			for _, frame := range finding.Trace {
+				if frame.Function != "" {
+					isReachable = true
+					name := frame.Function
+					if frame.Receiver != "" {
+						name = frame.Receiver + "." + name
+					}
+					if frame.Position != nil && frame.Position.Filename != "" {
+						name += " (" + frame.Position.Filename + ")"
+						lastFilename = frame.Position.Filename
+					}
+					callParts = append(callParts, name)
+				} else if frame.Package != "" {
+					isPackageLevel = true
 				}
-				if frame.Position != nil && frame.Position.Filename != "" {
-					name += " (" + frame.Position.Filename + ")"
+				if entry.Package == "" && frame.Package != "" {
+					entry.Package = frame.Package
 				}
-				callParts = append(callParts, name)
-			} else if frame.Package != "" {
-				isPackageLevel = true
 			}
-			if entry.Package == "" && frame.Package != "" {
-				entry.Package = frame.Package
+			if len(callParts) > 0 {
+				if !isTestFile(lastFilename) {
+					allTestOnly = false
+				}
+				path := strings.Join(callParts, " → ")
+				if !seen[path] {
+					seen[path] = true
+					allPaths = append(allPaths, path)
+				}
+			}
+
+			if finding.FixVersion != "" && entry.FixVersion == "" {
+				entry.FixVersion = strings.TrimPrefix(finding.FixVersion, "v")
 			}
 		}
 
 		entry.Reachable = isReachable
+		if isReachable && allTestOnly && len(allPaths) > 0 {
+			entry.TestOnly = true
+		}
 		entry.ModuleOnly = !isReachable && !isPackageLevel
 
 		if osv, ok := osvMap[id]; ok {
@@ -158,28 +185,52 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 					entry.Package = affected.Package.Name
 				}
 				for _, r := range affected.Ranges {
-					for _, ev := range r.Events {
-						if ev.Introduced != "" && entry.IntroducedVersion == "" {
-							entry.IntroducedVersion = strings.TrimPrefix(ev.Introduced, "v")
-						}
-						if ev.Fixed != "" && entry.FixVersion == "" {
-							entry.FixVersion = strings.TrimPrefix(ev.Fixed, "v")
+					entry.AffectedRanges = append(entry.AffectedRanges, parseRangeEvents(r.Events)...)
+				}
+				if entry.FixVersion == "" {
+					for _, ar := range entry.AffectedRanges {
+						if ar.Fixed != "" {
+							entry.FixVersion = ar.Fixed
+							break
 						}
 					}
 				}
 			}
 		}
 
-		if finding.FixVersion != "" {
-			entry.FixVersion = strings.TrimPrefix(finding.FixVersion, "v")
-		}
-
-		if len(callParts) > 0 {
-			entry.CallPath = strings.Join(callParts, " → ")
-		}
+		entry.CallPaths = allPaths
 
 		result.Vulns = append(result.Vulns, entry)
 	}
 
 	return result, nil
+}
+
+func parseRangeEvents(events []vulncheckEvent) []AffectedRange {
+	var ranges []AffectedRange
+	var current AffectedRange
+	for _, ev := range events {
+		if ev.Introduced != "" {
+			current.Introduced = strings.TrimPrefix(ev.Introduced, "v")
+		}
+		if ev.Fixed != "" {
+			current.Fixed = strings.TrimPrefix(ev.Fixed, "v")
+			ranges = append(ranges, current)
+			current = AffectedRange{}
+		}
+	}
+	if current.Introduced != "" {
+		ranges = append(ranges, current)
+	}
+	return ranges
+}
+
+func isTestFile(filename string) bool {
+	if filename == "" {
+		return false
+	}
+	return strings.HasSuffix(filename, "_test.go") ||
+		strings.Contains(filename, "/test/") ||
+		strings.Contains(filename, "/tests/") ||
+		strings.Contains(filename, "/e2e/")
 }

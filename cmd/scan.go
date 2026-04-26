@@ -131,10 +131,12 @@ func writeBatchSummary(path string, results []*types.Result) error {
 	}
 
 	if len(results) > 0 {
-		summary.Operator = results[0].Source.Operator
+		summary.Operator = results[0].Source.AffectedOperatorVersion
 		summary.AssessedAt = results[0].AssessedAt.Format("2006-01-02T15:04:05Z")
-		if ba := primaryBranch(results[0]); ba != nil {
+		if ba := results[0].Analysis.ReleaseBranch; ba != nil {
 			summary.CurrentGo = ba.Upstream.GoVersion
+		} else if fu := results[0].Analysis.FixUpstream; fu != nil {
+			summary.CurrentGo = fu.GoVersion
 		}
 	}
 
@@ -152,9 +154,9 @@ func writeBatchSummary(path string, results []*types.Result) error {
 		case types.Misassigned:
 			summary.Misassigned++
 		}
-		if ba := primaryBranch(r); ba != nil && ba.FixVersion != "" {
-			if neededGo == "" || ba.FixVersion > neededGo {
-				neededGo = ba.FixVersion
+		if r.Vulnerability.FixVersion != "" {
+			if neededGo == "" || r.Vulnerability.FixVersion > neededGo {
+				neededGo = r.Vulnerability.FixVersion
 			}
 		}
 	}
@@ -165,13 +167,6 @@ func writeBatchSummary(path string, results []*types.Result) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
-}
-
-func primaryBranch(r *types.Result) *types.BranchAnalysis {
-	if r.Analysis.ReleaseBranch != nil {
-		return r.Analysis.ReleaseBranch
-	}
-	return r.Analysis.LatestBranch
 }
 
 func init() {

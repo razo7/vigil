@@ -4,28 +4,20 @@ import (
 	"github.com/razo7/vigil/pkg/types"
 )
 
-// POC: hardcoded RHEL8→RHEL9 transition thresholds.
-// Production should use live lookup from Jira or the support matrix.
-var rhel8Thresholds = map[string]string{
-	"self-node-remediation":        "0.10.0",
-	"node-healthcheck-controller":  "0.9.0",
-	"node-maintenance-operator":    "5.4.0",
-	"machine-deletion-remediation": "0.4.0",
-	"fence-agents-remediation":     "0.5.0",
-}
-
 type Input struct {
-	IsGoVuln       bool
-	IsReachable    bool
-	IsPackageLevel bool
-	FixGoVersion   string
-	CurrentGo      string
-	DownstreamGo   string
-	ImageName      string
-	OperatorName   string
-	AffectsVersion string
-	CVSS           float64
-	SupportPhase   types.SupportPhase
+	IsGoVuln            bool
+	IsReachable         bool
+	IsPackageLevel      bool
+	FixFunctionMismatch bool
+	TestOnly            bool
+	FixGoVersion        string
+	CurrentGo           string
+	DownstreamGo        string
+	ImageName           string
+	OperatorName        string
+	AffectsVersion      string
+	CVSS                float64
+	SupportPhase        types.SupportPhase
 }
 
 func Classify(in Input) (types.Classification, types.Priority, string) {
@@ -43,7 +35,7 @@ func Classify(in Input) (types.Classification, types.Priority, string) {
 
 	if in.FixGoVersion != "" && in.DownstreamGo != "" {
 		if CompareVersions(in.FixGoVersion, in.DownstreamGo) > 0 {
-			return types.BlockedByGo, types.PriorityBlocked, ""
+			return types.BlockedByGo, blockedPriority(in.IsReachable, in.CVSS, in.SupportPhase), ""
 		}
 	}
 
@@ -65,18 +57,28 @@ func determinePriority(cvss float64, phase types.SupportPhase) types.Priority {
 	return types.PriorityMedium
 }
 
+func blockedPriority(reachable bool, cvss float64, phase types.SupportPhase) types.Priority {
+	isActive := phase == types.PhaseGA || phase == types.PhaseEUS1
+
+	if reachable && cvss >= 7.0 && isActive {
+		return types.PriorityCritical
+	}
+	if reachable && cvss >= 7.0 {
+		return types.PriorityHigh
+	}
+	if reachable && isActive {
+		return types.PriorityHigh
+	}
+	return types.PriorityLow
+}
+
 func checkMisassignment(in Input) string {
 	if isBundleImage(in.ImageName) {
 		return "Go CVE assigned to bundle image (OLM metadata only, no Go runtime)"
 	}
 
-	if isRHEL8Image(in.ImageName) {
-		threshold, ok := rhel8Thresholds[in.OperatorName]
-		if ok && in.AffectsVersion != "" {
-			if CompareVersions(in.AffectsVersion, threshold) < 0 {
-				return "CVE targets RHEL8-based image for unsupported operator version (pre-RHEL9 transition)"
-			}
-		}
+	if isRHEL8Image(in.ImageName) && in.SupportPhase == types.PhaseEOL {
+		return "CVE targets RHEL8-based image for EOL operator version"
 	}
 
 	return ""

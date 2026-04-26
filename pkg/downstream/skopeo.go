@@ -16,26 +16,31 @@ type DownstreamComponent struct {
 	CatalogURL string
 }
 
-var registryImages = map[string][]string{
+type registryImage struct {
+	Image      string
+	CatalogURL string
+}
+
+var registryImages = map[string][]registryImage{
 	"fence-agents-remediation": {
-		"registry.redhat.io/workload-availability/fence-agents-remediation-rhel9-operator",
-		"registry.redhat.io/workload-availability/fence-agents-remediation-rhel8-operator",
+		{"registry.redhat.io/workload-availability/fence-agents-remediation-rhel9-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/fence-agents-remediation-rhel9-operator/6571618e7aa3050b63e3afab"},
+		{"registry.redhat.io/workload-availability/fence-agents-remediation-rhel8-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/fence-agents-remediation-rhel8-operator/63dd12aa26958ed845b46039"},
 	},
 	"self-node-remediation": {
-		"registry.redhat.io/workload-availability/self-node-remediation-rhel9-operator",
-		"registry.redhat.io/workload-availability/self-node-remediation-rhel8-operator",
+		{"registry.redhat.io/workload-availability/self-node-remediation-rhel9-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/self-node-remediation-rhel9-operator/6571618f4e0bd48dbce4ae45"},
+		{"registry.redhat.io/workload-availability/self-node-remediation-rhel8-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/self-node-remediation-rhel8-operator/619e61805e68a3498fd7f370"},
 	},
 	"node-healthcheck-controller": {
-		"registry.redhat.io/workload-availability/node-healthcheck-rhel9-operator",
-		"registry.redhat.io/workload-availability/node-healthcheck-rhel8-operator",
+		{"registry.redhat.io/workload-availability/node-healthcheck-rhel9-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/node-healthcheck-rhel9-operator/6571618d3be2e9f9dd11dd1f"},
+		{"registry.redhat.io/workload-availability/node-healthcheck-rhel8-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/node-healthcheck-rhel8-operator/6155e987fd28a8320b5a3ee0"},
 	},
 	"node-maintenance-operator": {
-		"registry.redhat.io/workload-availability/node-maintenance-rhel9-operator",
-		"registry.redhat.io/workload-availability/node-maintenance-rhel8-operator",
+		{"registry.redhat.io/workload-availability/node-maintenance-rhel9-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/node-maintenance-rhel9-operator/6571618d99fab71dc7b0d6c9"},
+		{"registry.redhat.io/workload-availability/node-maintenance-rhel8-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/node-maintenance-rhel8-operator/6155e3a9fd28a8320b5a3edc"},
 	},
 	"machine-deletion-remediation": {
-		"registry.redhat.io/workload-availability/machine-deletion-remediation-rhel9-operator",
-		"registry.redhat.io/workload-availability/machine-deletion-remediation-rhel8-operator",
+		{"registry.redhat.io/workload-availability/machine-deletion-remediation-rhel9-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/machine-deletion-remediation-rhel9-operator/6571618ee5ab87f6d0cb3f7e"},
+		{"registry.redhat.io/workload-availability/machine-deletion-remediation-rhel8-operator", "https://catalog.redhat.com/en/software/containers/workload-availability/machine-deletion-remediation-rhel8-operator/63dd150126958ed845b46105"},
 	},
 }
 
@@ -49,8 +54,8 @@ func LookupDownstreamComponent(operatorName, operatorVersion string) (*Downstrea
 
 	normalizedVersion := strings.TrimPrefix(operatorVersion, "v")
 
-	for _, image := range images {
-		tags, err := skopeoListTags(image)
+	for _, ri := range images {
+		tags, err := skopeoListTags(ri.Image)
 		if err != nil {
 			continue
 		}
@@ -62,18 +67,17 @@ func LookupDownstreamComponent(operatorName, operatorVersion string) (*Downstrea
 			}
 			tagVersion := m[1]
 			if tagVersion == normalizedVersion || strings.HasPrefix(tagVersion, normalizedVersion+".") {
-				name := image[strings.LastIndex(image, "/")+1:]
+				name := ri.Image[strings.LastIndex(ri.Image, "/")+1:]
 				rhelBase := "rhel9"
-				if strings.Contains(image, "rhel8") {
+				if strings.Contains(ri.Image, "rhel8") {
 					rhelBase = "rhel8"
 				}
-				catalogURL := fmt.Sprintf("https://catalog.redhat.com/software/containers/search?q=%s", name)
 				return &DownstreamComponent{
 					Name:       name,
-					Registry:   image,
+					Registry:   ri.Image,
 					RHELBase:   rhelBase,
 					MatchedTag: tag,
-					CatalogURL: catalogURL,
+					CatalogURL: ri.CatalogURL,
 				}, nil
 			}
 		}

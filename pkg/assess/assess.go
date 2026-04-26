@@ -137,10 +137,35 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	supportPhase := lifecycle.LookupSupportPhase(ocpVersion)
 	input.SupportPhase = supportPhase
 
+	var fixFunctions string
+	if cveInfo != nil {
+		var allRefs []string
+		allRefs = append(allRefs, cveInfo.References...)
+		if vulnEntry != nil && vulnEntry.ID != "" {
+			if dbResult := fetchFromVulnDB(vulnEntry.ID); dbResult != nil {
+				allRefs = append(allRefs, dbResult.References...)
+			}
+		}
+		if link := extractGoReviewLink(allRefs); link != "" {
+			fixFunctions = fetchFixFunctions(link)
+		}
+	}
+
 	if vulnEntry != nil {
 		input.IsReachable = vulnEntry.Reachable
 		input.IsPackageLevel = !vulnEntry.ModuleOnly && !vulnEntry.Reachable
 		input.FixGoVersion = vulnEntry.FixVersion
+		if vulnEntry.Reachable && vulnEntry.TestOnly {
+			input.IsReachable = false
+			input.IsPackageLevel = true
+			input.TestOnly = true
+		} else if vulnEntry.Reachable && fixFunctions != "" {
+			if !fixFunctionsInCallPaths(fixFunctions, vulnEntry.CallPaths) {
+				input.IsReachable = false
+				input.IsPackageLevel = true
+				input.FixFunctionMismatch = true
+			}
+		}
 	}
 
 	classification, priority, misassignReason := classify.Classify(input)
@@ -148,22 +173,21 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	// Build branch analysis for the scanned branch
 	ba := buildBranchAnalysis(branchName, currentGo,
 		buildGoModLink(ticket.Component, branchName, goMod.EffectiveVersionLine()),
-		vulnEntry, isGoVuln, ticket, cveInfo)
+		vulnEntry, isGoVuln, input.FixFunctionMismatch, input.TestOnly)
 
-	// Populate downstream info
-	ba.Downstream = buildDownstreamInfo(operatorName, dsInfo, dsComponent)
+	// Populate downstream and catalog component info
+	ba.Downstream, ba.CatalogComponent = buildDownstreamInfo(operatorName, dsInfo, dsComponent)
 
 	result := &types.Result{
 		Source: types.SourceInfo{
 			TicketID:          fmt.Sprintf("%s (%s/browse/%s)", opts.TicketID, jiraClient.BaseURL(), opts.TicketID),
-			Operator:          operatorName,
-			OperatorVersion:   ticket.OperatorVersion,
+			AffectedOperatorVersion: formatOperator(operatorName, ticket.OperatorVersion),
 			Reporter:          ticket.Reporter,
 			Assignee:          ticket.Assignee,
 			DueDate:           ticket.DueDate,
 			JiraPriority:      ticket.JiraPriority,
 			Labels:            strings.Join(ticket.Labels, ", "),
-			AffectsVersions:   strings.Join(ticket.AffectsVersions, ", "),
+			AffectsRHWAVersions: strings.Join(ticket.AffectsVersions, ", "),
 			TicketFixVersions: strings.Join(ticket.FixVersions, ", "),
 			OCPSupport:        lifecycle.BuildOCPSupport(operatorName, ticket.OperatorVersion),
 		},
@@ -181,19 +205,23 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		Version:    version,
 	}
 
+	populateVulnMetadata(&result.Vulnerability, vulnEntry, isGoVuln, ticket, cveInfo, fixFunctions)
+
 	if cveInfo != nil {
 		result.Vulnerability.CWE = cveInfo.CWE
 		result.Vulnerability.CWEDescription = cveInfo.CWEDescription
-		result.Vulnerability.References = filterGoReferences(cveInfo.References)
+		if refs := filterGoReferences(cveInfo.References); len(refs) > 0 {
+			result.Vulnerability.References = strings.Join(refs, ", ")
+		}
 	}
 
 	if usedWorktree {
 		result.Analysis.ReleaseBranch = ba
 		if isGoVuln {
-			result.Analysis.LatestBranch = assessLatestBranch(repoPath, ticket.CVEID, ticket.Component, operatorName, ticket.ImageName)
+			result.Analysis.FixUpstream = assessFixUpstream(repoPath, ticket.CVEID, ticket.Component)
 		}
 	} else {
-		result.Analysis.LatestBranch = ba
+		result.Analysis.ReleaseBranch = ba
 	}
 
 	result.Recommendation.Action = generateRecommendation(result)
@@ -201,7 +229,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	return result, nil
 }
 
-func buildBranchAnalysis(branch, goVersion, goModLink string, vulnEntry *goversion.VulnEntry, isGoVuln bool, ticket *jira.TicketInfo, cveInfo *cve.CVEInfo) *types.BranchAnalysis {
+func buildBranchAnalysis(branch, goVersion, goModLink string, vulnEntry *goversion.VulnEntry, isGoVuln bool, fixFuncMismatch bool, testOnly bool) *types.BranchAnalysis {
 	goVersionStr := goVersion
 	if goModLink != "" {
 		goVersionStr = fmt.Sprintf("%s (%s)", goVersion, goModLink)
@@ -214,12 +242,12 @@ func buildBranchAnalysis(branch, goVersion, goModLink string, vulnEntry *goversi
 	}
 
 	if vulnEntry != nil {
-		ba.VulnID = vulnEntry.ID
-		ba.Package = vulnEntry.Package
-		ba.FixVersion = vulnEntry.FixVersion
-		ba.AffectedGoVersions = formatAffectedVersions(vulnEntry.IntroducedVersion, vulnEntry.FixVersion)
-		ba.CallPath = vulnEntry.CallPath
-		if vulnEntry.Reachable {
+		ba.CallPaths = vulnEntry.CallPaths
+		if testOnly {
+			ba.Reachability = "TEST-ONLY (reachable only through test code, not shipped binary)"
+		} else if fixFuncMismatch {
+			ba.Reachability = "PACKAGE-LEVEL (package imported but fix functions not in call path)"
+		} else if vulnEntry.Reachable {
 			ba.Reachability = "REACHABLE"
 		} else if !vulnEntry.ModuleOnly {
 			ba.Reachability = "PACKAGE-LEVEL (imported but no call path)"
@@ -228,55 +256,111 @@ func buildBranchAnalysis(branch, goVersion, goModLink string, vulnEntry *goversi
 		}
 	} else if isGoVuln {
 		ba.Reachability = "UNKNOWN (CVE not in Go vuln DB)"
-		if pkg := jira.ExtractGoPackage(ticket.Summary); pkg != "" {
-			ba.Package = fmt.Sprintf("%s (from ticket summary)", pkg)
-		} else if cveInfo != nil {
-			if pkg := jira.ExtractGoPackage(cveInfo.Description); pkg != "" {
-				ba.Package = fmt.Sprintf("%s (from CVE description)", pkg)
-			}
-		}
 	} else {
-		ba.Package = fmt.Sprintf("%s (non-Go)", extractNonGoPackage(ticket))
 		ba.Reachability = "N/A (non-Go)"
-	}
-
-	if ba.VulnID == "" && cveInfo != nil {
-		if vulnID := extractVulnIDFromRefs(cveInfo.References); vulnID != "" {
-			ba.VulnID = vulnID
-		}
 	}
 
 	return ba
 }
 
-func buildDownstreamInfo(operatorName string, dsInfo *downstream.ContainerfileInfo, dsComponent *downstream.DownstreamComponent) *types.DownstreamInfo {
-	ds := &types.DownstreamInfo{}
-	populated := false
+func populateVulnMetadata(v *types.VulnInfo, vulnEntry *goversion.VulnEntry, isGoVuln bool, ticket *jira.TicketInfo, cveInfo *cve.CVEInfo, fixFunctions string) {
+	if vulnEntry != nil {
+		v.VulnID = vulnEntry.ID
+		v.Package = vulnEntry.Package
+		v.FixVersion = vulnEntry.FixVersion
+		affected := formatAffectedRanges(vulnEntry.AffectedRanges)
+		if affected != "" && vulnEntry.ID != "" {
+			v.AffectedGoVersions = fmt.Sprintf("%s (https://pkg.go.dev/vuln/%s)", affected, vulnEntry.ID)
+		} else {
+			v.AffectedGoVersions = affected
+		}
+	} else if isGoVuln {
+		if pkg := jira.ExtractGoPackage(ticket.Summary); pkg != "" {
+			v.Package = fmt.Sprintf("%s (from ticket summary)", pkg)
+		} else if cveInfo != nil {
+			if pkg := jira.ExtractGoPackage(cveInfo.Description); pkg != "" {
+				v.Package = fmt.Sprintf("%s (from CVE description)", pkg)
+			}
+		}
+	} else {
+		v.Package = fmt.Sprintf("%s (non-Go)", extractNonGoPackage(ticket))
+	}
+
+	if cveInfo != nil {
+		if cveInfo.Description != "" {
+			v.Description = firstSentence(cveInfo.Description)
+		}
+
+		if v.VulnID == "" {
+			if vulnID := extractVulnIDFromRefs(cveInfo.References); vulnID != "" {
+				v.VulnID = vulnID
+			}
+		}
+
+		var allRefs []string
+		allRefs = append(allRefs, cveInfo.References...)
+
+		if v.VulnID != "" && v.AffectedGoVersions == "" {
+			if dbResult := fetchFromVulnDB(v.VulnID); dbResult != nil {
+				allRefs = append(allRefs, dbResult.References...)
+				if len(dbResult.Ranges) > 0 {
+					affected := formatAffectedRanges(dbResult.Ranges)
+					v.AffectedGoVersions = fmt.Sprintf("%s (https://pkg.go.dev/vuln/%s)", affected, v.VulnID)
+				}
+				if v.FixVersion == "" && dbResult.FixVersion != "" {
+					v.FixVersion = dbResult.FixVersion
+				}
+			}
+			if v.AffectedGoVersions == "" {
+				v.AffectedGoVersions = fmt.Sprintf("https://pkg.go.dev/vuln/%s", v.VulnID)
+			}
+		}
+
+		if link := extractGoReviewLink(allRefs); link != "" {
+			if v.FixVersion != "" {
+				v.FixVersion = fmt.Sprintf("%s (%s)", v.FixVersion, link)
+			} else {
+				v.FixVersion = link
+			}
+			if fixFunctions != "" {
+				v.FixFunctions = fixFunctions
+			} else {
+				v.FixFunctions = fetchFixFunctions(link)
+			}
+		} else if fixFunctions != "" {
+			v.FixFunctions = fixFunctions
+		}
+	}
+}
+
+func buildDownstreamInfo(operatorName string, dsInfo *downstream.ContainerfileInfo, dsComponent *downstream.DownstreamComponent) (*types.DownstreamInfo, string) {
+	var ds *types.DownstreamInfo
+	var catalogComponent string
 
 	if dsInfo != nil && dsInfo.GoVersion != "" {
+		ds = &types.DownstreamInfo{
+			Branch: dsInfo.Branch,
+		}
 		link := buildDownstreamLink(operatorName, dsInfo)
 		if link != "" {
 			ds.GoVersion = fmt.Sprintf("%s (%s)", dsInfo.GoVersion, link)
 		} else {
 			ds.GoVersion = dsInfo.GoVersion
 		}
-		populated = true
 	}
 
 	if dsComponent != nil {
-		ds.ComponentName = dsComponent.Name
-		ds.ComponentURL = dsComponent.CatalogURL
-		ds.RHELBase = dsComponent.RHELBase
-		populated = true
+		if dsComponent.CatalogURL != "" {
+			catalogComponent = fmt.Sprintf("%s (%s)", dsComponent.Name, dsComponent.CatalogURL)
+		} else {
+			catalogComponent = dsComponent.Name
+		}
 	}
 
-	if !populated {
-		return nil
-	}
-	return ds
+	return ds, catalogComponent
 }
 
-func assessLatestBranch(repoPath, cveID, component, operatorName, imageName string) *types.BranchAnalysis {
+func assessFixUpstream(repoPath, cveID, component string) *types.FixUpstreamInfo {
 	goMod, err := goversion.ReadGoMod(repoPath)
 	if err != nil {
 		return nil
@@ -286,50 +370,34 @@ func assessLatestBranch(repoPath, cveID, component, operatorName, imageName stri
 	if link := buildGoModLink(component, "main", goMod.EffectiveVersionLine()); link != "" {
 		goVersionStr = fmt.Sprintf("%s (%s)", goVersionStr, link)
 	}
-	ba := &types.BranchAnalysis{
-		Upstream: types.UpstreamInfo{
-			Branch:    "main",
-			GoVersion: goVersionStr,
-		},
-	}
-
-	dsInfo, err := downstream.FetchGoVersion(operatorName, imageName, "main")
-	if err == nil && dsInfo.GoVersion != "" {
-		dsGoVersion := dsInfo.GoVersion
-		if link := buildDownstreamLink(operatorName, dsInfo); link != "" {
-			dsGoVersion = fmt.Sprintf("%s (%s)", dsGoVersion, link)
-		}
-		ba.Downstream = &types.DownstreamInfo{
-			GoVersion: dsGoVersion,
-		}
+	fu := &types.FixUpstreamInfo{
+		GoVersion: goVersionStr,
 	}
 
 	vulnResult, err := goversion.RunGovulncheck(repoPath)
 	if err != nil {
-		return ba
+		return fu
 	}
 
 	entry := findMatchingVuln(vulnResult, cveID)
 	if entry == nil {
-		ba.Reachability = "NOT-FOUND (CVE not in Go vuln DB)"
-		return ba
+		fu.Reachability = "UNKNOWN (CVE not in Go vuln DB)"
+		return fu
 	}
 
-	ba.VulnID = entry.ID
-	ba.Package = entry.Package
-	ba.FixVersion = entry.FixVersion
-	ba.AffectedGoVersions = formatAffectedVersions(entry.IntroducedVersion, entry.FixVersion)
-	ba.CallPath = entry.CallPath
+	fu.CallPaths = entry.CallPaths
 
-	if entry.Reachable {
-		ba.Reachability = "REACHABLE"
+	if entry.Reachable && entry.TestOnly {
+		fu.Reachability = "TEST-ONLY (reachable only through test code, not shipped binary)"
+	} else if entry.Reachable {
+		fu.Reachability = "REACHABLE"
 	} else if !entry.ModuleOnly {
-		ba.Reachability = "PACKAGE-LEVEL (imported but no call path)"
+		fu.Reachability = "PACKAGE-LEVEL (imported but no call path)"
 	} else {
-		ba.Reachability = "MODULE-LEVEL (in go.mod but package not imported)"
+		fu.Reachability = "MODULE-LEVEL (in go.mod but package not imported)"
 	}
 
-	return ba
+	return fu
 }
 
 type operatorInfo struct {
@@ -402,6 +470,22 @@ func findMatchingVuln(result *goversion.VulncheckResult, cveID string) *goversio
 	return nil
 }
 
+func fixFunctionsInCallPaths(fixFunctions string, callPaths []string) bool {
+	for _, entry := range strings.Split(fixFunctions, ", ") {
+		parts := strings.SplitN(entry, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		funcName := parts[1]
+		for _, path := range callPaths {
+			if strings.Contains(path, funcName) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func extractNonGoPackage(ticket *jira.TicketInfo) string {
 	lower := strings.ToLower(ticket.Summary)
 	packages := []string{"urllib3", "requests", "setuptools", "pip"}
@@ -429,6 +513,35 @@ func filterGoReferences(refs []string) []string {
 	return goRefs
 }
 
+func firstSentence(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	if i := strings.Index(s, ". "); i != -1 {
+		return s[:i+1]
+	}
+	if strings.HasSuffix(s, ".") {
+		return s
+	}
+	if len(s) > 200 {
+		return s[:200] + "..."
+	}
+	return s
+}
+
+func extractGoReviewLink(refs []string) string {
+	for _, ref := range refs {
+		if strings.Contains(ref, "go-review.googlesource.com") {
+			return ref
+		}
+	}
+	for _, ref := range refs {
+		if strings.HasPrefix(ref, "https://go.dev/cl/") {
+			clNum := strings.TrimPrefix(ref, "https://go.dev/cl/")
+			return fmt.Sprintf("https://go-review.googlesource.com/c/go/+/%s", clNum)
+		}
+	}
+	return ""
+}
+
 func extractVulnIDFromRefs(refs []string) string {
 	for _, ref := range refs {
 		if m := goVulnIDRe.FindString(ref); m != "" {
@@ -438,17 +551,23 @@ func extractVulnIDFromRefs(refs []string) string {
 	return ""
 }
 
-func formatAffectedVersions(introduced, fixed string) string {
-	if introduced == "" && fixed == "" {
+func formatAffectedRanges(ranges []goversion.AffectedRange) string {
+	if len(ranges) == 0 {
 		return ""
 	}
-	if fixed != "" {
-		if introduced != "" && introduced != "0" {
-			return fmt.Sprintf(">= %s, < %s", introduced, fixed)
+	var parts []string
+	for _, r := range ranges {
+		if r.Fixed != "" {
+			if r.Introduced != "" && r.Introduced != "0" {
+				parts = append(parts, fmt.Sprintf(">= %s, < %s", r.Introduced, r.Fixed))
+			} else {
+				parts = append(parts, fmt.Sprintf("< %s", r.Fixed))
+			}
+		} else if r.Introduced != "" {
+			parts = append(parts, fmt.Sprintf(">= %s", r.Introduced))
 		}
-		return fmt.Sprintf("< %s", fixed)
 	}
-	return fmt.Sprintf(">= %s", introduced)
+	return strings.Join(parts, "; ")
 }
 
 func buildGoModLink(component, branch string, line int) string {
@@ -472,21 +591,16 @@ func buildDownstreamLink(operatorName string, dsInfo *downstream.ContainerfileIn
 		host, operatorName, dsInfo.Branch, dsInfo.FilePath, dsInfo.GoVersionLine)
 }
 
-func primaryBranch(r *types.Result) *types.BranchAnalysis {
-	if r.Analysis.ReleaseBranch != nil {
-		return r.Analysis.ReleaseBranch
+func formatOperator(name, version string) string {
+	if version != "" {
+		return fmt.Sprintf("%s:v%s", name, version)
 	}
-	return r.Analysis.LatestBranch
+	return name
 }
 
 func generateRecommendation(r *types.Result) string {
-	ba := primaryBranch(r)
-	fixVersion := ""
-	pkg := ""
-	if ba != nil {
-		fixVersion = ba.FixVersion
-		pkg = ba.Package
-	}
+	fixVersion := r.Vulnerability.FixVersion
+	pkg := r.Vulnerability.Package
 
 	switch r.Recommendation.Classification {
 	case types.FixableNow:
@@ -495,7 +609,14 @@ func generateRecommendation(r *types.Result) string {
 		}
 		return "Fix available. Create fix PR with dependency bump."
 	case types.BlockedByGo:
-		return fmt.Sprintf("Go version bump to %s required. Currently blocked by downstream base image.", fixVersion)
+		switch r.Recommendation.Priority {
+		case types.PriorityCritical:
+			return fmt.Sprintf("REACHABLE high-severity vuln on active support. Go %s required — may qualify for RHSA. Escalate to base image team.", fixVersion)
+		case types.PriorityHigh:
+			return fmt.Sprintf("Go version bump to %s required. Blocked by downstream base image — prioritize for next z-stream or operator release.", fixVersion)
+		default:
+			return fmt.Sprintf("Go version bump to %s required. Blocked by downstream base image — defer to next operator/RHWA release.", fixVersion)
+		}
 	case types.NotReachable:
 		return "Vulnerable code path not called. Low priority — bump if easy, otherwise document."
 	case types.NotGo:
