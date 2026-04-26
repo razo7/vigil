@@ -61,7 +61,7 @@ func colorizeJSON(s string) string {
 
 func colorizeLine(line string) string {
 	if m := jsonKeyRe.FindStringSubmatchIndex(line); m != nil {
-		indent := line[:m[2]]
+		indent := line[m[2]:m[3]]
 		key := line[m[4]:m[5]]
 		rest := line[m[1]:]
 
