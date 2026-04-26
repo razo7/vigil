@@ -5,11 +5,11 @@ import "time"
 type Classification string
 
 const (
-	FixableNow   Classification = "fixable-now"
-	BlockedByGo  Classification = "blocked-by-go"
-	NotReachable Classification = "not-reachable"
-	NotGo        Classification = "not-go"
-	Misassigned  Classification = "misassigned"
+	FixableNow   Classification = "Fixable Now"
+	BlockedByGo  Classification = "Blocked by Go"
+	NotReachable Classification = "Not Reachable"
+	NotGo        Classification = "Not Go"
+	Misassigned  Classification = "Misassigned"
 )
 
 type Priority string
@@ -27,7 +27,7 @@ const (
 type SupportPhase string
 
 const (
-	PhaseGA          SupportPhase = "GA"
+	PhaseGA          SupportPhase = "Full Support"
 	PhaseEUS1        SupportPhase = "EUS1"
 	PhaseMaintenance SupportPhase = "Maintenance"
 	PhaseEUS2        SupportPhase = "EUS2"
@@ -36,51 +36,71 @@ const (
 	PhaseUnknown     SupportPhase = "Unknown"
 )
 
-type Result struct {
-	TicketID  string `json:"ticket_id"`
-	TicketURL string `json:"ticket_url"`
-	CVEID     string `json:"cve_id"`
-	CVESource string `json:"cve_source"`
-
-	Operator        string       `json:"operator"`
-	OperatorVersion string       `json:"operator_version"`
-	OCPVersion      string       `json:"ocp_version"`
-	SupportPhase    SupportPhase `json:"support_phase"`
-
-	Severity      float64 `json:"severity"`
-	SeverityLabel string  `json:"severity_label"`
-	Package       string  `json:"package"`
-
-	UpstreamGo        string `json:"upstream_go"`
-	UpstreamBranch    string `json:"upstream_branch,omitempty"`
-	UpstreamGoModLink string `json:"upstream_gomod_link,omitempty"`
-
-	DownstreamGo     string `json:"downstream_go"`
-	DownstreamBranch string `json:"downstream_branch,omitempty"`
-	DownstreamGoLink string `json:"downstream_go_link,omitempty"`
-
-	Reachability string `json:"reachability"`
-	VulnID       string `json:"vuln_id"`
-	FixVersion   string `json:"fix_version"`
-	CallPath     string `json:"call_path,omitempty"`
-
-	Classification  Classification `json:"classification"`
-	Priority        Priority       `json:"priority"`
-	Recommendation  string         `json:"recommendation"`
-	MisassignReason string         `json:"misassign_reason,omitempty"`
-
-	MainBranch *MainBranchResult `json:"main_branch,omitempty"`
-
-	AssessedAt time.Time `json:"assessed_at"`
-	Version    string    `json:"vigil_version"`
+type SourceInfo struct {
+	TicketID          string   `json:"ticket_id"`
+	Operator          string   `json:"operator"`
+	OperatorVersion   string   `json:"operator_version"`
+	Reporter          string   `json:"reporter,omitempty"`
+	Assignee          string   `json:"assignee,omitempty"`
+	DueDate           string   `json:"due_date,omitempty"`
+	JiraPriority      string   `json:"jira_priority,omitempty"`
+	Labels            string   `json:"labels,omitempty"`
+	AffectsVersions   string   `json:"affects_versions,omitempty"`
+	TicketFixVersions string   `json:"ticket_fix_versions,omitempty"`
+	OCPSupport        []string `json:"ocp_support"`
 }
 
-type MainBranchResult struct {
-	Reachability string `json:"reachability"`
-	VulnID       string `json:"vuln_id,omitempty"`
-	FixVersion   string `json:"fix_version,omitempty"`
-	CurrentGo    string `json:"current_go"`
-	GoModLink    string `json:"gomod_link,omitempty"`
-	CallPath     string `json:"call_path,omitempty"`
-	Package      string `json:"package,omitempty"`
+type VulnInfo struct {
+	CVEID          string   `json:"cve_id"`
+	Severity       float64  `json:"severity"`
+	SeverityLabel  string   `json:"severity_label"`
+	CWE            string   `json:"cwe,omitempty"`
+	CWEDescription string   `json:"cwe_description,omitempty"`
+	References     []string `json:"references,omitempty"`
+}
+
+type UpstreamInfo struct {
+	Branch    string `json:"branch"`
+	GoVersion string `json:"go_version"`
+	GoModLink string `json:"gomod_link,omitempty"`
+}
+
+type DownstreamInfo struct {
+	GoVersion     string `json:"go_version,omitempty"`
+	GoLink        string `json:"go_link,omitempty"`
+	ComponentName string `json:"component_name,omitempty"`
+	ComponentURL  string `json:"component_url,omitempty"`
+	RHELBase      string `json:"rhel_base,omitempty"`
+}
+
+type BranchAnalysis struct {
+	Upstream           UpstreamInfo    `json:"upstream"`
+	Downstream         *DownstreamInfo `json:"downstream,omitempty"`
+	VulnID             string          `json:"vuln_id,omitempty"`
+	Package            string          `json:"package,omitempty"`
+	FixVersion         string          `json:"fix_version,omitempty"`
+	AffectedGoVersions string          `json:"affected_go_versions,omitempty"`
+	Reachability       string          `json:"reachability"`
+	CallPath           string          `json:"call_path,omitempty"`
+}
+
+type AnalysisInfo struct {
+	ReleaseBranch *BranchAnalysis `json:"release_branch,omitempty"`
+	LatestBranch  *BranchAnalysis `json:"latest_branch,omitempty"`
+}
+
+type RecommendationInfo struct {
+	Classification  Classification `json:"classification"`
+	Priority        Priority       `json:"priority"`
+	Action          string         `json:"action"`
+	MisassignReason string         `json:"misassign_reason,omitempty"`
+}
+
+type Result struct {
+	Source         SourceInfo         `json:"source"`
+	Vulnerability  VulnInfo          `json:"vulnerability"`
+	Analysis       AnalysisInfo      `json:"analysis"`
+	Recommendation RecommendationInfo `json:"recommendation"`
+	AssessedAt     time.Time          `json:"assessed_at"`
+	Version        string             `json:"vigil_version"`
 }

@@ -9,12 +9,13 @@ import (
 )
 
 type OCPRelease struct {
-	Version            string
-	GA                 time.Time
-	EndFullSupport     time.Time
-	EndMaintenance     time.Time
-	EUS                bool
-	EndEUS             time.Time
+	Version        string
+	GA             time.Time
+	EndFullSupport time.Time
+	EndMaintenance time.Time
+	EUS            bool
+	EndEUS1        time.Time
+	EndEUS2        time.Time
 }
 
 type OperatorOCPMapping struct {
@@ -22,16 +23,17 @@ type OperatorOCPMapping struct {
 	OCPVersions     []string
 }
 
+// Dates from https://access.redhat.com/support/policy/updates/openshift_operators#platform-aligned
 var ocpReleases = []OCPRelease{
-	{Version: "4.12", GA: date(2023, 1, 17), EndFullSupport: date(2023, 7, 17), EndMaintenance: date(2024, 7, 17), EUS: true, EndEUS: date(2025, 1, 17)},
+	{Version: "4.12", GA: date(2023, 1, 17), EndFullSupport: date(2023, 7, 17), EndMaintenance: date(2024, 7, 17), EUS: true, EndEUS1: date(2025, 1, 17)},
 	{Version: "4.13", GA: date(2023, 5, 17), EndFullSupport: date(2023, 11, 17), EndMaintenance: date(2024, 11, 17)},
-	{Version: "4.14", GA: date(2023, 10, 31), EndFullSupport: date(2024, 6, 18), EndMaintenance: date(2025, 5, 1), EUS: true, EndEUS: date(2025, 10, 31)},
+	{Version: "4.14", GA: date(2023, 10, 31), EndFullSupport: date(2024, 2, 20), EndMaintenance: date(2025, 5, 1), EUS: true, EndEUS1: date(2025, 10, 31), EndEUS2: date(2026, 10, 31)},
 	{Version: "4.15", GA: date(2024, 2, 27), EndFullSupport: date(2024, 10, 16), EndMaintenance: date(2025, 8, 27)},
-	{Version: "4.16", GA: date(2024, 6, 27), EndFullSupport: date(2025, 1, 30), EndMaintenance: date(2025, 12, 27), EUS: true, EndEUS: date(2026, 6, 27)},
-	{Version: "4.17", GA: date(2024, 10, 10), EndFullSupport: date(2025, 6, 11), EndMaintenance: date(2026, 4, 1)},
-	{Version: "4.18", GA: date(2025, 3, 11), EndFullSupport: date(2025, 10, 28), EndMaintenance: date(2026, 8, 25), EUS: true, EndEUS: date(2027, 3, 11)},
-	{Version: "4.19", GA: date(2025, 6, 25), EndFullSupport: date(2026, 2, 18), EndMaintenance: date(2026, 12, 17)},
-	{Version: "4.20", GA: date(2025, 11, 5), EndFullSupport: date(2026, 6, 1), EndMaintenance: date(2027, 5, 5), EUS: true, EndEUS: date(2027, 11, 5)},
+	{Version: "4.16", GA: date(2024, 6, 27), EndFullSupport: date(2025, 1, 21), EndMaintenance: date(2025, 12, 27), EUS: true, EndEUS1: date(2026, 6, 27), EndEUS2: date(2027, 6, 27)},
+	{Version: "4.17", GA: date(2024, 10, 10), EndFullSupport: date(2025, 5, 25), EndMaintenance: date(2026, 4, 1)},
+	{Version: "4.18", GA: date(2025, 3, 11), EndFullSupport: date(2025, 9, 16), EndMaintenance: date(2026, 8, 25), EUS: true, EndEUS1: date(2027, 2, 25), EndEUS2: date(2028, 2, 25)},
+	{Version: "4.19", GA: date(2025, 6, 25), EndFullSupport: date(2026, 5, 3), EndMaintenance: date(2026, 12, 17)},
+	{Version: "4.20", GA: date(2025, 11, 5), EndFullSupport: date(2026, 5, 3), EndMaintenance: date(2027, 4, 21), EUS: true, EndEUS1: date(2027, 10, 21), EndEUS2: date(2028, 10, 21)},
 	{Version: "4.21", GA: date(2026, 3, 25), EndFullSupport: date(2026, 10, 25), EndMaintenance: date(2027, 9, 25)},
 }
 
@@ -110,14 +112,16 @@ func LookupSupportPhaseAt(ocpVersion string, at time.Time) types.SupportPhase {
 		if at.Before(r.EndFullSupport) {
 			return types.PhaseGA
 		}
-		if r.EUS && at.Before(r.EndMaintenance) {
-			return types.PhaseEUS1
-		}
 		if at.Before(r.EndMaintenance) {
 			return types.PhaseMaintenance
 		}
-		if r.EUS && at.Before(r.EndEUS) {
-			return types.PhaseEUS2
+		if r.EUS {
+			if !r.EndEUS1.IsZero() && at.Before(r.EndEUS1) {
+				return types.PhaseEUS1
+			}
+			if !r.EndEUS2.IsZero() && at.Before(r.EndEUS2) {
+				return types.PhaseEUS2
+			}
 		}
 		return types.PhaseEOL
 	}
@@ -139,18 +143,117 @@ func AllOCPVersionsForOperator(operatorName, operatorVersion string) []string {
 	return nil
 }
 
-func FormatSupportInfo(operatorName, operatorVersion string) string {
+func BuildOCPSupport(operatorName, operatorVersion string) []string {
+	return BuildOCPSupportAt(operatorName, operatorVersion, time.Now())
+}
+
+func BuildOCPSupportAt(operatorName, operatorVersion string, at time.Time) []string {
 	ocpVersions := AllOCPVersionsForOperator(operatorName, operatorVersion)
 	if len(ocpVersions) == 0 {
-		return ""
+		return nil
 	}
 
-	var parts []string
-	for _, ocp := range ocpVersions {
-		phase := LookupSupportPhase(ocp)
-		parts = append(parts, fmt.Sprintf("%s (%s)", ocp, phase))
+	if len(ocpVersions) == 1 {
+		r := findRelease(ocpVersions[0])
+		if r == nil {
+			return nil
+		}
+		return []string{formatPlatformAligned(r, []string{r.Version}, at)}
 	}
-	return strings.Join(parts, ", ")
+
+	paVersion := ocpVersions[len(ocpVersions)-1]
+	rsVersions := ocpVersions[:len(ocpVersions)-1]
+
+	paRelease := findRelease(paVersion)
+	if paRelease == nil {
+		return nil
+	}
+
+	lastRS := findRelease(rsVersions[len(rsVersions)-1])
+
+	var entries []string
+
+	if lastRS != nil {
+		rsPhase := rollingStreamPhase(paRelease.EndFullSupport, lastRS.EndMaintenance, at)
+		var phaseEnd string
+		switch rsPhase {
+		case types.PhaseGA:
+			phaseEnd = paRelease.EndFullSupport.Format(dateFmt)
+		case types.PhaseMaintenance:
+			phaseEnd = lastRS.EndMaintenance.Format(dateFmt)
+		case types.PhaseEOL:
+			phaseEnd = "EOL"
+		}
+		entries = append(entries, fmt.Sprintf("Rolling Stream OCP %s: %s until %s, EOL %s (%s)",
+			strings.Join(rsVersions, ", "), rsPhase, phaseEnd,
+			lastRS.EndMaintenance.Format(dateFmt), ocpSupportSource))
+	}
+
+	entries = append(entries, formatPlatformAligned(paRelease, []string{paVersion}, at))
+
+	return entries
+}
+
+const (
+	dateFmt          = "2006-01-02"
+	ocpSupportSource = "https://access.redhat.com/support/policy/updates/openshift_operators#platform-aligned"
+)
+
+func formatPlatformAligned(r *OCPRelease, versions []string, at time.Time) string {
+	phase := LookupSupportPhaseAt(r.Version, at)
+
+	var phaseEnd string
+	switch phase {
+	case types.PhaseGA:
+		phaseEnd = r.EndFullSupport.Format(dateFmt)
+	case types.PhaseMaintenance:
+		phaseEnd = r.EndMaintenance.Format(dateFmt)
+	case types.PhaseEUS1:
+		phaseEnd = r.EndEUS1.Format(dateFmt)
+	case types.PhaseEUS2:
+		phaseEnd = r.EndEUS2.Format(dateFmt)
+	case types.PhaseEOL:
+		phaseEnd = "EOL"
+	}
+
+	var eol string
+	if r.EUS && !r.EndEUS2.IsZero() {
+		eol = r.EndEUS2.Format(dateFmt)
+	} else if r.EUS && !r.EndEUS1.IsZero() {
+		eol = r.EndEUS1.Format(dateFmt)
+	} else {
+		eol = r.EndMaintenance.Format(dateFmt)
+	}
+
+	return fmt.Sprintf("Platform Aligned OCP %s: %s until %s, EOL %s (%s)",
+		strings.Join(versions, ", "), phase, phaseEnd, eol, ocpSupportSource)
+}
+
+func rollingStreamPhase(endFullSupport, endMaintenance time.Time, at time.Time) types.SupportPhase {
+	if at.Before(endFullSupport) {
+		return types.PhaseGA
+	}
+	if at.Before(endMaintenance) {
+		return types.PhaseMaintenance
+	}
+	return types.PhaseEOL
+}
+
+func findRelease(version string) *OCPRelease {
+	for i := range ocpReleases {
+		if ocpReleases[i].Version == version {
+			return &ocpReleases[i]
+		}
+	}
+	return nil
+}
+
+func FormatSupportInfo(operatorName, operatorVersion string) string {
+	entries := BuildOCPSupport(operatorName, operatorVersion)
+	if len(entries) == 0 {
+		return ""
+	}
+	return strings.Join(entries, "; ")
 }
 
 func normalizeVersion(v string) string {

@@ -4,6 +4,32 @@ import (
 	"testing"
 )
 
+func TestDownstreamBranch(t *testing.T) {
+	tests := []struct {
+		operator string
+		version  string
+		expected string
+	}{
+		{"fence-agents-remediation", "0.8", "far-0-8"},
+		{"fence-agents-remediation", "0.4", "far-0-4"},
+		{"self-node-remediation", "0.10", "snr-0-10"},
+		{"node-healthcheck-controller", "0.9", "nhc-0-9"},
+		{"node-maintenance-operator", "5.4", "nmo-5-4"},
+		{"machine-deletion-remediation", "0.4", "mdr-0-4"},
+		{"fence-agents-remediation", "", "main"},
+		{"unknown-operator", "1.0", "main"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.operator+"/"+tc.version, func(t *testing.T) {
+			got := downstreamBranch(tc.operator, tc.version)
+			if got != tc.expected {
+				t.Errorf("downstreamBranch(%q, %q) = %q, want %q", tc.operator, tc.version, got, tc.expected)
+			}
+		})
+	}
+}
+
 func TestExtractGoVersion(t *testing.T) {
 	tests := []struct {
 		name     string

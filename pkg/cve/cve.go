@@ -9,9 +9,12 @@ import (
 )
 
 type CVEInfo struct {
-	Score       float64
-	Severity    string
-	Description string
+	Score          float64
+	Severity       string
+	Description    string
+	CWE            string
+	CWEDescription string
+	References     []string
 }
 
 func FetchCVSSScore(cveID string) (*CVEInfo, error) {
@@ -52,6 +55,45 @@ func parseCVEResponse(data []byte) (*CVEInfo, error) {
 		if descs, _ := cna["descriptions"].([]interface{}); len(descs) > 0 {
 			if d, _ := descs[0].(map[string]interface{}); d != nil {
 				result.Description, _ = d["value"].(string)
+			}
+		}
+
+		if problemTypes, _ := cna["problemTypes"].([]interface{}); len(problemTypes) > 0 {
+			for _, pt := range problemTypes {
+				ptMap, _ := pt.(map[string]interface{})
+				if ptMap == nil {
+					continue
+				}
+				if descriptions, _ := ptMap["descriptions"].([]interface{}); len(descriptions) > 0 {
+					for _, desc := range descriptions {
+						descMap, _ := desc.(map[string]interface{})
+						if descMap == nil {
+							continue
+						}
+						if cweID, _ := descMap["cweId"].(string); cweID != "" {
+							result.CWE = cweID
+							if cweDesc, _ := descMap["description"].(string); cweDesc != "" {
+								result.CWEDescription = cweDesc
+							}
+							break
+						}
+					}
+				}
+				if result.CWE != "" {
+					break
+				}
+			}
+		}
+
+		if refs, _ := cna["references"].([]interface{}); len(refs) > 0 {
+			for _, ref := range refs {
+				refMap, _ := ref.(map[string]interface{})
+				if refMap == nil {
+					continue
+				}
+				if u, _ := refMap["url"].(string); u != "" {
+					result.References = append(result.References, u)
+				}
 			}
 		}
 	}

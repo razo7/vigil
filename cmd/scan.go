@@ -15,11 +15,11 @@ import (
 )
 
 var (
-	scanComponent    string
-	scanJQL          string
-	scanJira         bool
-	scanSummaryFile  string
-	scanRepoPath     string
+	scanComponent     string
+	scanJQL           string
+	scanJira          bool
+	scanSummaryFile   string
+	scanRepoPath      string
 	scanIncludeClosed bool
 )
 
@@ -94,7 +94,7 @@ then assess each one.`,
 			}
 
 			results = append(results, result)
-			fmt.Fprintf(os.Stderr, "→ %s (%s)\n", result.Classification, result.Priority)
+			fmt.Fprintf(os.Stderr, "→ %s (%s)\n", result.Recommendation.Classification, result.Recommendation.Priority)
 
 			if scanJira {
 				if err := report.PostToJira(result); err != nil {
@@ -104,14 +104,15 @@ then assess each one.`,
 		}
 
 		output := map[string]interface{}{
-			"total":   len(tickets),
+			"total":    len(tickets),
 			"assessed": len(results),
-			"errors":  len(errors),
-			"results": results,
+			"errors":   len(errors),
+			"results":  results,
 		}
 
-		data, _ := json.MarshalIndent(output, "", "  ")
-		fmt.Println(string(data))
+		if err := printJSON(output); err != nil {
+			return fmt.Errorf("marshaling output: %w", err)
+		}
 
 		if scanSummaryFile != "" {
 			if err := writeBatchSummary(scanSummaryFile, results); err != nil {
@@ -130,14 +131,16 @@ func writeBatchSummary(path string, results []*types.Result) error {
 	}
 
 	if len(results) > 0 {
-		summary.Operator = results[0].Operator
+		summary.Operator = results[0].Source.Operator
 		summary.AssessedAt = results[0].AssessedAt.Format("2006-01-02T15:04:05Z")
-		summary.CurrentGo = results[0].UpstreamGo
+		if ba := primaryBranch(results[0]); ba != nil {
+			summary.CurrentGo = ba.Upstream.GoVersion
+		}
 	}
 
 	var neededGo string
 	for _, r := range results {
-		switch r.Classification {
+		switch r.Recommendation.Classification {
 		case types.FixableNow:
 			summary.FixableNow++
 		case types.BlockedByGo:
@@ -149,8 +152,10 @@ func writeBatchSummary(path string, results []*types.Result) error {
 		case types.Misassigned:
 			summary.Misassigned++
 		}
-		if r.FixVersion != "" && (neededGo == "" || r.FixVersion > neededGo) {
-			neededGo = r.FixVersion
+		if ba := primaryBranch(r); ba != nil && ba.FixVersion != "" {
+			if neededGo == "" || ba.FixVersion > neededGo {
+				neededGo = ba.FixVersion
+			}
 		}
 	}
 	summary.NeededGo = neededGo
@@ -162,12 +167,19 @@ func writeBatchSummary(path string, results []*types.Result) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+func primaryBranch(r *types.Result) *types.BranchAnalysis {
+	if r.Analysis.ReleaseBranch != nil {
+		return r.Analysis.ReleaseBranch
+	}
+	return r.Analysis.LatestBranch
+}
+
 func init() {
 	scanCmd.Flags().StringVar(&scanComponent, "component", "", "Component name (e.g., FAR, SNR, NHC, NMO, MDR)")
 	scanCmd.Flags().StringVar(&scanJQL, "jql", "", "Custom JQL query")
 	scanCmd.Flags().BoolVar(&scanJira, "jira", false, "Post assessments as Jira comments")
 	scanCmd.Flags().StringVar(&scanSummaryFile, "summary-file", "", "Write aggregate summary to file")
 	scanCmd.Flags().StringVar(&scanRepoPath, "repo-path", "", "Path to operator repo (auto-detected from Jira component if omitted)")
-	scanCmd.Flags().BoolVar(&scanIncludeClosed, "include-closed", false, "Include closed tickets (for historical validation)")
+	scanCmd.Flags().BoolVar(&scanIncludeClosed, "include-closed", false, "Include closed tickets (historical reference)")
 	rootCmd.AddCommand(scanCmd)
 }

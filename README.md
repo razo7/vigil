@@ -51,7 +51,10 @@ go install golang.org/x/vuln/cmd/govulncheck@latest
 
 ```bash
 podman build -t vigil -f Containerfile .
-podman run --rm -e JIRA_API_TOKEN=$JIRA_API_TOKEN vigil assess RHWA-881
+podman run --rm -t \
+  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
+  -e GITLAB_PRIVATE_TOKEN=$GITLAB_PRIVATE_TOKEN \
+  vigil assess RHWA-881
 ```
 
 ## Usage
@@ -118,11 +121,11 @@ Supported components: `FAR`, `SNR`, `NHC`, `NMO`, `MDR`.
 
 | Category | Condition | Action |
 |---|---|---|
-| `fixable-now` | Reachable vuln + fix version available + downstream supports it | Bump dependency, create PR |
-| `blocked-by-go` | Reachable vuln + fix needs newer Go than downstream provides | Wait for base image update |
-| `not-reachable` | Vuln in dependency but govulncheck finds no call path | Low priority, document |
-| `not-go` | Non-Go CVE (Python, C library, etc.) | Manual review |
-| `misassigned` | Wrong image (bundle) or unsupported version (RHEL8) | Recommend reassignment |
+| `Fixable Now` | Reachable vuln + fix version available + downstream supports it | Bump dependency, create PR |
+| `Blocked by Go` | Reachable vuln + fix needs newer Go than downstream provides | Wait for base image update |
+| `Not Reachable` | Vuln in dependency but govulncheck finds no call path | Low priority, document |
+| `Not Go` | Non-Go CVE (Python, C library, etc.) | Manual review |
+| `Misassigned` | Wrong image (bundle) or unsupported version (RHEL8) | Recommend reassignment |
 
 ### Misassignment detection
 
@@ -134,6 +137,30 @@ Supported components: `FAR`, `SNR`, `NHC`, `NMO`, `MDR`.
 
 Priority combines classification, CVSS severity (>=7.0 = high), and OCP support phase (GA/EUS1 = active, Maintenance/EUS2/EUS3 = lower priority).
 
+### Color legend
+
+Terminal output is colorized when stdout is a TTY. Use `--color` to force colors in containers.
+
+| Element | Color | Meaning |
+|---|---|---|
+| Severity CRITICAL | Bright red | CVSS >= 9.0 |
+| Severity HIGH | Red | CVSS >= 7.0 |
+| Severity MEDIUM | Yellow | CVSS >= 4.0 |
+| Severity LOW | Green | CVSS < 4.0 |
+| Classification Fixable Now | Green | Fix available, act now |
+| Classification Blocked by Go | Red | Needs newer Go version |
+| Classification Not Reachable | Green | No call path, low risk |
+| Classification Not Go | Yellow | Non-Go CVE, manual review |
+| Classification Misassigned | Gray | Wrong component |
+| Reachability REACHABLE | Red | Vulnerable code is called |
+| Reachability other | Green | Not in call path |
+| Due date overdue | Bright red | Past today |
+| Due date <= 7 days | Red | Due this week |
+| Due date <= 30 days | Yellow | Due this month |
+| Due date > 30 days | Green | Not urgent |
+| OCP tier | Bold magenta | Platform Aligned / Rolling Stream |
+| OCP version | Bold cyan | OCP version number |
+
 ## Environment variables
 
 | Variable | Required | Default | Description |
@@ -141,7 +168,7 @@ Priority combines classification, CVSS severity (>=7.0 = high), and OCP support 
 | `JIRA_API_TOKEN` | Yes | — | Jira API token for ticket access |
 | `JIRA_EMAIL` | No | `oraz@redhat.com` | Email for Jira auth |
 | `JIRA_BASE_URL` | No | `https://redhat.atlassian.net` | Jira instance URL |
-| `GITLAB_TOKEN` | No | — | GitLab token for downstream Containerfile access |
+| `GITLAB_TOKEN` or `GITLAB_PRIVATE_TOKEN` | No | — | GitLab token for downstream Containerfile access |
 | `GITLAB_HOST` | No | `https://gitlab.cee.redhat.com` | GitLab instance URL |
 
 ## Branch-specific scanning

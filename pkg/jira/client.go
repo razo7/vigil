@@ -16,7 +16,11 @@ const (
 	defaultEmail   = "oraz@redhat.com"
 )
 
-var cvePattern = regexp.MustCompile(`CVE-\d{4}-\d+`)
+var (
+	cvePattern   = regexp.MustCompile(`CVE-\d{4}-\d+`)
+	goPackageRe  = regexp.MustCompile(`(?i)(golang\.org/x/\S+|github\.com/[\w\-]+/[\w\-]+(?:/\S+)?|google\.golang\.org/\S+|gopkg\.in/\S+)`)
+	stdlibPkgRe  = regexp.MustCompile(`(?i)\b(crypto/\w+|net/\w+|encoding/\w+|archive/\w+|compress/\w+|html/\w+|text/\w+|math/\w+|os/\w+|path/\w+|regexp|database/\w+|image/\w+)\b`)
+)
 
 type Client struct {
 	baseURL    string
@@ -65,10 +69,14 @@ type TicketInfo struct {
 	Component        string
 	ImageName        string
 	FixVersions      []string
-	AffectsVersion   string
+	AffectsVersions  []string
 	OperatorVersion  string
 	Status           string
 	Labels           []string
+	Reporter         string
+	Assignee         string
+	DueDate          string
+	JiraPriority     string
 }
 
 func (c *Client) FetchTicket(ticketID string) (*TicketInfo, error) {
@@ -105,7 +113,7 @@ func (c *Client) FetchTicket(ticketID string) (*TicketInfo, error) {
 }
 
 func (c *Client) SearchTickets(jql string) ([]TicketInfo, error) {
-	url := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=50&fields=key,summary,status,components,fixVersions,versions,labels,description",
+	url := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=50&fields=key,summary,status,components,fixVersions,versions,labels,description,reporter,assignee,duedate,priority",
 		c.baseURL, encode(jql))
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -212,9 +220,7 @@ func parseTicket(raw map[string]interface{}) (*TicketInfo, error) {
 		for _, v := range versions {
 			if vm, ok := v.(map[string]interface{}); ok {
 				if name := getString(vm, "name"); name != "" {
-					if info.AffectsVersion == "" {
-						info.AffectsVersion = name
-					}
+					info.AffectsVersions = append(info.AffectsVersions, name)
 				}
 			}
 		}
@@ -227,6 +233,11 @@ func parseTicket(raw map[string]interface{}) (*TicketInfo, error) {
 			}
 		}
 	}
+
+	info.Reporter = getNestedString(fields, "reporter", "displayName")
+	info.Assignee = getNestedString(fields, "assignee", "displayName")
+	info.DueDate = getString(fields, "duedate")
+	info.JiraPriority = getNestedString(fields, "priority", "name")
 
 	info.ImageName = extractImageName(info.Summary, info.Labels)
 
@@ -267,6 +278,16 @@ func extractImageName(summary string, labels []string) string {
 		}
 	}
 
+	return ""
+}
+
+func ExtractGoPackage(text string) string {
+	if m := goPackageRe.FindString(text); m != "" {
+		return strings.TrimRight(m, ".,;:)")
+	}
+	if m := stdlibPkgRe.FindString(text); m != "" {
+		return strings.TrimRight(m, ".,;:)")
+	}
 	return ""
 }
 

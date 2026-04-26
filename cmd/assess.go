@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -33,11 +32,9 @@ analysis, check downstream base image compatibility, and classify the CVE.`,
 			return fmt.Errorf("assessment failed: %w", err)
 		}
 
-		out, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
+		if err := printJSON(result); err != nil {
 			return fmt.Errorf("marshaling result: %w", err)
 		}
-		fmt.Println(string(out))
 
 		if assessSummaryFile != "" {
 			if err := report.WriteSanitizedSummary(assessSummaryFile, result); err != nil {
