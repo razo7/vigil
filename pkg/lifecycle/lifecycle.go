@@ -256,6 +256,40 @@ func FormatSupportInfo(operatorName, operatorVersion string) string {
 	return strings.Join(entries, "; ")
 }
 
+// RHWA release version → OCP version mapping
+// e.g., rhwa-24.2 ships with OCP 4.16, rhwa-25.1 ships with OCP 4.18
+var rhwaToOCP = map[string]string{
+	"rhwa-23.3": "4.14",
+	"rhwa-24.1": "4.15",
+	"rhwa-24.2": "4.16",
+	"rhwa-24.3": "4.17",
+	"rhwa-25.1": "4.18",
+	"rhwa-25.2": "4.19",
+	"rhwa-25.3": "4.20",
+	"rhwa-26.1": "4.21",
+}
+
+func LookupOperatorVersionFromRHWA(operatorName, rhwaVersion string) string {
+	ocpVersion, ok := rhwaToOCP[rhwaVersion]
+	if !ok {
+		return ""
+	}
+
+	mappings, ok := operatorMappings[operatorName]
+	if !ok {
+		return ""
+	}
+
+	for _, m := range mappings {
+		for _, ocp := range m.OCPVersions {
+			if ocp == ocpVersion {
+				return m.OperatorVersion
+			}
+		}
+	}
+	return ""
+}
+
 func normalizeVersion(v string) string {
 	v = strings.TrimPrefix(v, "v")
 	parts := strings.Split(v, ".")

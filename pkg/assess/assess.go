@@ -37,6 +37,16 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 
 	operatorName := deriveOperatorName(ticket.Component)
 
+	if ticket.OperatorVersion == "" {
+		for _, av := range ticket.AffectsVersions {
+			if ver := lifecycle.LookupOperatorVersionFromRHWA(operatorName, av); ver != "" {
+				ticket.OperatorVersion = ver
+				ticket.OperatorVersionSource = "rhwa-version"
+				break
+			}
+		}
+	}
+
 	repoInput := opts.RepoPath
 	if repoInput == "" {
 		repoInput = deriveRepoURL(ticket.Component)
@@ -181,7 +191,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	result := &types.Result{
 		Source: types.SourceInfo{
 			TicketID:                fmt.Sprintf("%s (%s/browse/%s)", opts.TicketID, jiraClient.BaseURL(), opts.TicketID),
-			AffectedOperatorVersion: formatOperator(operatorName, ticket.OperatorVersion),
+			AffectedOperatorVersion: formatOperator(operatorName, ticket.OperatorVersion, ticket.OperatorVersionSource),
 			Status:                  ticket.Status,
 			Resolution:              ticket.Resolution,
 			Reporter:                ticket.Reporter,
@@ -593,11 +603,14 @@ func buildDownstreamLink(operatorName string, dsInfo *downstream.ContainerfileIn
 		host, operatorName, dsInfo.Branch, dsInfo.FilePath, dsInfo.GoVersionLine)
 }
 
-func formatOperator(name, version string) string {
-	if version != "" {
-		return fmt.Sprintf("%s:v%s", name, version)
+func formatOperator(name, version, source string) string {
+	if version == "" {
+		return name
 	}
-	return name
+	if source != "" && source != "title" {
+		return fmt.Sprintf("%s:v%s [%s]", name, version, source)
+	}
+	return fmt.Sprintf("%s:v%s", name, version)
 }
 
 func generateRecommendation(r *types.Result) string {

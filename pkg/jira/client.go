@@ -16,9 +16,10 @@ import (
 const defaultBaseURL = "https://redhat.atlassian.net"
 
 var (
-	cvePattern  = regexp.MustCompile(`CVE-\d{4}-\d+`)
-	goPackageRe = regexp.MustCompile(`(?i)(golang\.org/x/\S+|github\.com/[\w\-]+/[\w\-]+(?:/\S+)?|google\.golang\.org/\S+|gopkg\.in/\S+)`)
-	stdlibPkgRe = regexp.MustCompile(`(?i)\b(crypto/\w+|net/\w+|encoding/\w+|archive/\w+|compress/\w+|html/\w+|text/\w+|math/\w+|os/\w+|path/\w+|regexp|database/\w+|image/\w+)\b`)
+	cvePattern      = regexp.MustCompile(`CVE-\d{4}-\d+`)
+	operatorVerInRe = regexp.MustCompile(`(?i)(?:FAR|SNR|NHC|NMO|MDR)\s+v?(\d+\.\d+(?:\.\d+)?)`)
+	goPackageRe     = regexp.MustCompile(`(?i)(golang\.org/x/\S+|github\.com/[\w\-]+/[\w\-]+(?:/\S+)?|google\.golang\.org/\S+|gopkg\.in/\S+)`)
+	stdlibPkgRe     = regexp.MustCompile(`(?i)\b(crypto/\w+|net/\w+|encoding/\w+|archive/\w+|compress/\w+|html/\w+|text/\w+|math/\w+|os/\w+|path/\w+|regexp|database/\w+|image/\w+)\b`)
 )
 
 type Client struct {
@@ -62,21 +63,22 @@ var (
 )
 
 type TicketInfo struct {
-	Key             string
-	Summary         string
-	CVEID           string
-	Component       string
-	ImageName       string
-	FixVersions     []string
-	AffectsVersions []string
-	OperatorVersion string
-	Status          string
-	Resolution      string
-	Labels          []string
-	Reporter        string
-	Assignee        string
-	DueDate         string
-	JiraPriority    string
+	Key                   string
+	Summary               string
+	CVEID                 string
+	Component             string
+	ImageName             string
+	FixVersions           []string
+	AffectsVersions       []string
+	OperatorVersion       string
+	OperatorVersionSource string
+	Status                string
+	Resolution            string
+	Labels                []string
+	Reporter              string
+	Assignee              string
+	DueDate               string
+	JiraPriority          string
 }
 
 func (c *Client) FetchTicket(ticketID string) (*TicketInfo, error) {
@@ -264,6 +266,14 @@ func parseTicket(raw map[string]interface{}) (*TicketInfo, error) {
 
 	if m := versionBracketRe.FindStringSubmatch(info.Summary); len(m) == 3 {
 		info.OperatorVersion = m[2]
+		info.OperatorVersionSource = "title"
+	}
+
+	if info.OperatorVersion == "" {
+		if ver := extractVersionFromDescription(fields); ver != "" {
+			info.OperatorVersion = ver
+			info.OperatorVersionSource = "description"
+		}
 	}
 
 	if components, ok := fields["components"].([]interface{}); ok {
@@ -332,6 +342,32 @@ func extractCVEFromDescription(fields map[string]interface{}) string {
 	}
 
 	return cvePattern.FindString(string(b))
+}
+
+func extractVersionFromDescription(fields map[string]interface{}) string {
+	desc, ok := fields["description"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	b, err := json.Marshal(desc)
+	if err != nil {
+		return ""
+	}
+
+	if m := operatorVerInRe.FindStringSubmatch(string(b)); len(m) == 2 {
+		return normalizeOperatorVersion(m[1])
+	}
+	return ""
+}
+
+func normalizeOperatorVersion(v string) string {
+	v = strings.TrimPrefix(v, "v")
+	parts := strings.Split(v, ".")
+	if len(parts) >= 2 {
+		return parts[0] + "." + parts[1]
+	}
+	return v
 }
 
 func extractImageName(summary string, labels []string) string {
