@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/razo7/vigil/pkg/classify"
+	"github.com/razo7/vigil/pkg/cve"
 	"github.com/razo7/vigil/pkg/goversion"
 	"github.com/razo7/vigil/pkg/jira"
 	"github.com/razo7/vigil/pkg/types"
@@ -57,6 +58,19 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 
 	cveSource := fmt.Sprintf("https://www.cve.org/CVERecord?id=%s", ticket.CVEID)
 
+	var severity float64
+	var severityLabel string
+	cveInfo, err := cve.FetchCVSSScore(ticket.CVEID)
+	if err == nil && cveInfo != nil {
+		severity = cveInfo.Score
+		severityLabel = cveInfo.Severity
+		if !isGoVuln {
+			// already detected as non-Go from ticket summary
+		} else if isNonGoDescription(cveInfo.Description) {
+			isGoVuln = false
+		}
+	}
+
 	input := classify.Input{
 		IsGoVuln:       isGoVuln,
 		CurrentGo:      currentGo,
@@ -64,6 +78,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		ImageName:      ticket.ImageName,
 		OperatorName:   operatorName,
 		AffectsVersion: ticket.OperatorVersion,
+		CVSS:           severity,
 	}
 
 	if vulnEntry != nil {
@@ -78,6 +93,8 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		TicketID:        opts.TicketID,
 		CVEID:           ticket.CVEID,
 		CVESource:       cveSource,
+		Severity:        severity,
+		SeverityLabel:   severityLabel,
 		Classification:  classification,
 		Priority:        priority,
 		OperatorVersion: ticket.OperatorVersion,
@@ -134,16 +151,23 @@ func deriveOperatorName(component string) string {
 }
 
 func isGoRelatedCVE(ticket *jira.TicketInfo) bool {
-	lower := strings.ToLower(ticket.Summary)
+	return !isNonGoDescription(ticket.Summary)
+}
 
-	nonGoIndicators := []string{"urllib3", "python", "pip", "setuptools", "requests"}
+var nonGoIndicators = []string{
+	"python", "pip", "setuptools", "requests", "urllib3",
+	"ply ", "ruby", "perl", "java", "node.js", "npm",
+	"php", "c library", "glibc", "openssl", "libxml",
+}
+
+func isNonGoDescription(desc string) bool {
+	lower := strings.ToLower(desc)
 	for _, indicator := range nonGoIndicators {
 		if strings.Contains(lower, indicator) {
-			return false
+			return true
 		}
 	}
-
-	return true
+	return false
 }
 
 func findMatchingVuln(result *goversion.VulncheckResult, cveID string) *goversion.VulnEntry {
