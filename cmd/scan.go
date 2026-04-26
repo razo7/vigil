@@ -86,11 +86,11 @@ then assess each one.`,
 				continue
 			}
 
-			fmt.Fprintf(os.Stderr, "[%d/%d] %s ", i+1, len(tickets), ticketID)
+			ticketLink := termLink(ticketID, fmt.Sprintf("https://redhat.atlassian.net/browse/%s", ticketID))
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s ", i+1, len(tickets), ticketLink)
 
 			if ticket.CVEID == "" {
-				ticketLink := termLink(ticketID, fmt.Sprintf("https://redhat.atlassian.net/browse/%s", ticketID))
-				fmt.Fprintf(os.Stderr, "SKIP %s: no CVE ID. Ticket is about: %s\n", ticketLink, ticket.Summary)
+				fmt.Fprintf(os.Stderr, "no CVE ID (SKIP). Ticket is about: %s\n", ticket.Summary)
 				continue
 			}
 
