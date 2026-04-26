@@ -56,14 +56,17 @@ then assess each one.`,
 			}
 		}
 
-		jiraClient, err := jira.NewClient()
+		tickets, err := jira.SearchTicketsCLI(jql)
 		if err != nil {
-			return fmt.Errorf("creating Jira client: %w", err)
-		}
-
-		tickets, err := jiraClient.SearchTickets(jql)
-		if err != nil {
-			return fmt.Errorf("searching tickets: %w", err)
+			fmt.Fprintf(os.Stderr, "WARNING: jira CLI search failed (%v), falling back to REST API\n", err)
+			jiraClient, clientErr := jira.NewClient()
+			if clientErr != nil {
+				return fmt.Errorf("creating Jira client: %w", clientErr)
+			}
+			tickets, err = jiraClient.SearchTickets(jql)
+			if err != nil {
+				return fmt.Errorf("searching tickets: %w", err)
+			}
 		}
 
 		if len(tickets) == 0 {

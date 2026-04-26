@@ -1,12 +1,14 @@
 package jira
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -152,6 +154,77 @@ func (c *Client) SearchTickets(jql string) ([]TicketInfo, error) {
 	}
 
 	return tickets, nil
+}
+
+func SearchTicketsCLI(jql string) ([]TicketInfo, error) {
+	queries := splitMultiProjectJQL(jql)
+
+	seen := make(map[string]bool)
+	var tickets []TicketInfo
+
+	for _, q := range queries {
+		raw, err := runJiraCLI(q)
+		if err != nil {
+			return nil, err
+		}
+		for _, issue := range raw {
+			t, err := parseTicket(issue)
+			if err != nil {
+				continue
+			}
+			if !seen[t.Key] {
+				seen[t.Key] = true
+				tickets = append(tickets, *t)
+			}
+		}
+	}
+
+	return tickets, nil
+}
+
+func runJiraCLI(jql string) ([]map[string]interface{}, error) {
+	cmd := exec.Command("jira", "issue", "list", "-q", jql, "--raw")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("jira CLI: %w: %s", err, stderr.String())
+	}
+
+	if stdout.Len() == 0 {
+		return nil, nil
+	}
+
+	var raw []map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &raw); err != nil {
+		return nil, fmt.Errorf("parsing jira CLI output: %w", err)
+	}
+	return raw, nil
+}
+
+var multiProjectRe = regexp.MustCompile(`project\s+in\s*\(([^)]+)\)`)
+
+func splitMultiProjectJQL(jql string) []string {
+	jql = regexp.MustCompile(`\s+ORDER\s+BY\s+.*$`).ReplaceAllString(jql, "")
+
+	m := multiProjectRe.FindStringSubmatch(jql)
+	if m == nil {
+		return []string{jql}
+	}
+
+	projects := strings.Split(m[1], ",")
+	if len(projects) <= 1 {
+		return []string{jql}
+	}
+
+	var queries []string
+	for _, p := range projects {
+		p = strings.TrimSpace(p)
+		q := multiProjectRe.ReplaceAllString(jql, fmt.Sprintf("project = %s", p))
+		queries = append(queries, q)
+	}
+	return queries
 }
 
 func encode(s string) string {
