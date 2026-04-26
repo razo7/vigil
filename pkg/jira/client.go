@@ -101,7 +101,7 @@ func (c *Client) FetchTicket(ticketID string) (*TicketInfo, error) {
 }
 
 func (c *Client) SearchTickets(jql string) ([]TicketInfo, error) {
-	url := fmt.Sprintf("%s/rest/api/3/search?jql=%s&maxResults=50&fields=key,summary,status,components,fixVersions,versions,labels,description",
+	url := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=50&fields=key,summary,status,components,fixVersions,versions,labels,description",
 		c.baseURL, encode(jql))
 
 	req, err := http.NewRequest("GET", url, nil)

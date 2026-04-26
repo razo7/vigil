@@ -59,7 +59,18 @@ type Result struct {
 	Recommendation  string `json:"recommendation"`
 	MisassignReason string `json:"misassign_reason,omitempty"`
 
+	MainBranch *MainBranchResult `json:"main_branch,omitempty"`
+
 	Operator   string    `json:"operator"`
 	AssessedAt time.Time `json:"assessed_at"`
 	Version    string    `json:"vigil_version"`
+}
+
+type MainBranchResult struct {
+	Reachability string `json:"reachability"`
+	VulnID       string `json:"vuln_id,omitempty"`
+	FixVersion   string `json:"fix_version,omitempty"`
+	CurrentGo    string `json:"current_go"`
+	CallPath     string `json:"call_path,omitempty"`
+	Package      string `json:"package,omitempty"`
 }

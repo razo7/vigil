@@ -9,8 +9,10 @@ import (
 
 	"github.com/razo7/vigil/pkg/classify"
 	"github.com/razo7/vigil/pkg/cve"
+	"github.com/razo7/vigil/pkg/downstream"
 	"github.com/razo7/vigil/pkg/goversion"
 	"github.com/razo7/vigil/pkg/jira"
+	"github.com/razo7/vigil/pkg/lifecycle"
 	"github.com/razo7/vigil/pkg/types"
 )
 
@@ -39,17 +41,42 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 
 	operatorName := deriveOperatorName(ticket.Component)
 
-	goMod, err := goversion.ReadGoMod(repoPath)
+	scanPath := repoPath
+	usedWorktree := false
+	var worktreeCleanup func()
+
+	if ticket.OperatorVersion != "" {
+		branch := goversion.ReleaseBranch(ticket.OperatorVersion)
+		if goversion.HasBranch(repoPath, branch) {
+			wt, cleanup, err := goversion.CreateWorktree(repoPath, branch)
+			if err == nil {
+				scanPath = wt
+				worktreeCleanup = cleanup
+				usedWorktree = true
+			}
+		}
+	}
+	if worktreeCleanup != nil {
+		defer worktreeCleanup()
+	}
+
+	goMod, err := goversion.ReadGoMod(scanPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading go.mod: %w", err)
 	}
 	currentGo := goMod.EffectiveVersion()
 
+	downstreamGo := currentGo
+	dsInfo, err := downstream.FetchGoVersion(operatorName, ticket.ImageName, "")
+	if err == nil && dsInfo.GoVersion != "" {
+		downstreamGo = dsInfo.GoVersion
+	}
+
 	isGoVuln := isGoRelatedCVE(ticket)
 	var vulnEntry *goversion.VulnEntry
 
 	if isGoVuln {
-		vulnResult, err := goversion.RunGovulncheck(repoPath)
+		vulnResult, err := goversion.RunGovulncheck(scanPath)
 		if err != nil {
 			return nil, fmt.Errorf("running govulncheck: %w", err)
 		}
@@ -74,12 +101,16 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	input := classify.Input{
 		IsGoVuln:       isGoVuln,
 		CurrentGo:      currentGo,
-		DownstreamGo:   currentGo, // POC: fetch from downstream Containerfile in production
+		DownstreamGo:   downstreamGo,
 		ImageName:      ticket.ImageName,
 		OperatorName:   operatorName,
 		AffectsVersion: ticket.OperatorVersion,
 		CVSS:           severity,
 	}
+
+	ocpVersion := lifecycle.LookupOCPVersion(operatorName, ticket.OperatorVersion)
+	supportPhase := lifecycle.LookupSupportPhase(ocpVersion)
+	input.SupportPhase = supportPhase
 
 	if vulnEntry != nil {
 		input.IsReachable = vulnEntry.Reachable
@@ -98,8 +129,10 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		Classification:  classification,
 		Priority:        priority,
 		OperatorVersion: ticket.OperatorVersion,
+		OCPVersion:      ocpVersion,
+		SupportPhase:    supportPhase,
 		CurrentGo:       currentGo,
-		DownstreamGo:    currentGo, // POC: fetch from downstream Containerfile in production
+		DownstreamGo:    downstreamGo,
 		Operator:        operatorName,
 		AssessedAt:      time.Now().UTC(),
 		Version:         version,
@@ -125,9 +158,50 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		result.Reachability = "N/A (non-Go)"
 	}
 
+	if usedWorktree && isGoVuln {
+		result.MainBranch = assessMainBranch(repoPath, ticket.CVEID)
+	}
+
 	result.Recommendation = generateRecommendation(result)
 
 	return result, nil
+}
+
+func assessMainBranch(repoPath, cveID string) *types.MainBranchResult {
+	goMod, err := goversion.ReadGoMod(repoPath)
+	if err != nil {
+		return nil
+	}
+
+	mbr := &types.MainBranchResult{
+		CurrentGo: goMod.EffectiveVersion(),
+	}
+
+	vulnResult, err := goversion.RunGovulncheck(repoPath)
+	if err != nil {
+		return mbr
+	}
+
+	entry := findMatchingVuln(vulnResult, cveID)
+	if entry == nil {
+		mbr.Reachability = "NOT-FOUND"
+		return mbr
+	}
+
+	mbr.VulnID = entry.ID
+	mbr.Package = entry.Package
+	mbr.FixVersion = entry.FixVersion
+	mbr.CallPath = entry.CallPath
+
+	if entry.Reachable {
+		mbr.Reachability = "REACHABLE"
+	} else if !entry.ModuleOnly {
+		mbr.Reachability = "PACKAGE-LEVEL"
+	} else {
+		mbr.Reachability = "MODULE-LEVEL"
+	}
+
+	return mbr
 }
 
 func deriveOperatorName(component string) string {
@@ -155,9 +229,9 @@ func isGoRelatedCVE(ticket *jira.TicketInfo) bool {
 }
 
 var nonGoIndicators = []string{
-	"python", "pip", "setuptools", "requests", "urllib3",
-	"ply ", "ruby", "perl", "java", "node.js", "npm",
-	"php", "c library", "glibc", "openssl", "libxml",
+	"python", " pip ", "setuptools", "python-requests", "urllib3",
+	"ply ", "ruby", "perl ", "java ", "node.js", " npm ",
+	"php ", "c library", "glibc", "libxml",
 }
 
 func isNonGoDescription(desc string) bool {
