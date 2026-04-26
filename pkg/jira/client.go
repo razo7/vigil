@@ -16,9 +16,9 @@ import (
 const defaultBaseURL = "https://redhat.atlassian.net"
 
 var (
-	cvePattern   = regexp.MustCompile(`CVE-\d{4}-\d+`)
-	goPackageRe  = regexp.MustCompile(`(?i)(golang\.org/x/\S+|github\.com/[\w\-]+/[\w\-]+(?:/\S+)?|google\.golang\.org/\S+|gopkg\.in/\S+)`)
-	stdlibPkgRe  = regexp.MustCompile(`(?i)\b(crypto/\w+|net/\w+|encoding/\w+|archive/\w+|compress/\w+|html/\w+|text/\w+|math/\w+|os/\w+|path/\w+|regexp|database/\w+|image/\w+)\b`)
+	cvePattern  = regexp.MustCompile(`CVE-\d{4}-\d+`)
+	goPackageRe = regexp.MustCompile(`(?i)(golang\.org/x/\S+|github\.com/[\w\-]+/[\w\-]+(?:/\S+)?|google\.golang\.org/\S+|gopkg\.in/\S+)`)
+	stdlibPkgRe = regexp.MustCompile(`(?i)\b(crypto/\w+|net/\w+|encoding/\w+|archive/\w+|compress/\w+|html/\w+|text/\w+|math/\w+|os/\w+|path/\w+|regexp|database/\w+|image/\w+)\b`)
 )
 
 type Client struct {
@@ -62,21 +62,21 @@ var (
 )
 
 type TicketInfo struct {
-	Key              string
-	Summary          string
-	CVEID            string
-	Component        string
-	ImageName        string
-	FixVersions      []string
-	AffectsVersions  []string
-	OperatorVersion  string
-	Status           string
-	Resolution       string
-	Labels           []string
-	Reporter         string
-	Assignee         string
-	DueDate          string
-	JiraPriority     string
+	Key             string
+	Summary         string
+	CVEID           string
+	Component       string
+	ImageName       string
+	FixVersions     []string
+	AffectsVersions []string
+	OperatorVersion string
+	Status          string
+	Resolution      string
+	Labels          []string
+	Reporter        string
+	Assignee        string
+	DueDate         string
+	JiraPriority    string
 }
 
 func (c *Client) FetchTicket(ticketID string) (*TicketInfo, error) {

@@ -37,33 +37,33 @@ const (
 )
 
 type SourceInfo struct {
-	TicketID          string   `json:"ticket_id"`
-	AffectedOperatorVersion string `json:"affected operator version"`
-	Status            string   `json:"status"`
-	Resolution        string   `json:"resolution,omitempty"`
-	Reporter          string   `json:"reporter,omitempty"`
-	Assignee          string   `json:"assignee,omitempty"`
-	DueDate           string   `json:"due_date,omitempty"`
-	JiraPriority      string   `json:"jira_priority,omitempty"`
-	Labels            string   `json:"labels,omitempty"`
-	AffectsRHWAVersions string  `json:"affects_rhwa_versions,omitempty"`
-	TicketFixVersions string   `json:"ticket_fix_versions,omitempty"`
-	OCPSupport        []string `json:"rhwa-ocp_support"`
+	TicketID                string   `json:"ticket_id"`
+	AffectedOperatorVersion string   `json:"affected operator version"`
+	Status                  string   `json:"status"`
+	Resolution              string   `json:"resolution,omitempty"`
+	Reporter                string   `json:"reporter,omitempty"`
+	Assignee                string   `json:"assignee,omitempty"`
+	DueDate                 string   `json:"due_date,omitempty"`
+	JiraPriority            string   `json:"jira_priority,omitempty"`
+	Labels                  string   `json:"labels,omitempty"`
+	AffectsRHWAVersions     string   `json:"affects_rhwa_versions,omitempty"`
+	TicketFixVersions       string   `json:"ticket_fix_versions,omitempty"`
+	OCPSupport              []string `json:"rhwa-ocp_support"`
 }
 
 type VulnInfo struct {
-	CVEID              string   `json:"cve_id"`
-	Description        string   `json:"description,omitempty"`
-	Severity           float64  `json:"severity"`
-	SeverityLabel      string   `json:"severity_label"`
-	VulnID             string   `json:"vuln_id,omitempty"`
-	Package            string   `json:"package,omitempty"`
-	FixVersion         string   `json:"fix_version,omitempty"`
-	FixFunctions       string   `json:"fix_functions,omitempty"`
-	AffectedGoVersions string   `json:"affected_go_versions,omitempty"`
-	CWE                string   `json:"cwe,omitempty"`
-	CWEDescription     string   `json:"cwe_description,omitempty"`
-	References         string   `json:"references,omitempty"`
+	CVEID              string  `json:"cve_id"`
+	Description        string  `json:"description,omitempty"`
+	Severity           float64 `json:"severity"`
+	SeverityLabel      string  `json:"severity_label"`
+	VulnID             string  `json:"vuln_id,omitempty"`
+	Package            string  `json:"package,omitempty"`
+	FixVersion         string  `json:"fix_version,omitempty"`
+	FixFunctions       string  `json:"fix_functions,omitempty"`
+	AffectedGoVersions string  `json:"affected_go_versions,omitempty"`
+	CWE                string  `json:"cwe,omitempty"`
+	CWEDescription     string  `json:"cwe_description,omitempty"`
+	References         string  `json:"references,omitempty"`
 }
 
 type UpstreamInfo struct {
@@ -104,8 +104,8 @@ type RecommendationInfo struct {
 
 type Result struct {
 	Source         SourceInfo         `json:"source"`
-	Vulnerability  VulnInfo          `json:"vulnerability"`
-	Analysis       AnalysisInfo      `json:"analysis"`
+	Vulnerability  VulnInfo           `json:"vulnerability"`
+	Analysis       AnalysisInfo       `json:"analysis"`
 	Recommendation RecommendationInfo `json:"recommendation"`
 	AssessedAt     time.Time          `json:"assessed_at"`
 	Version        string             `json:"vigil_version"`

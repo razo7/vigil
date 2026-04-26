@@ -18,15 +18,15 @@ type AffectedRange struct {
 }
 
 type VulnEntry struct {
-	ID              string
-	Aliases         []string
-	Package         string
-	Reachable       bool
-	ModuleOnly      bool
-	AffectedRanges  []AffectedRange
-	FixVersion      string
-	CallPaths       []string
-	TestOnly        bool
+	ID             string
+	Aliases        []string
+	Package        string
+	Reachable      bool
+	ModuleOnly     bool
+	AffectedRanges []AffectedRange
+	FixVersion     string
+	CallPaths      []string
+	TestOnly       bool
 }
 
 type vulncheckMessage struct {
@@ -54,14 +54,14 @@ type vulncheckPosition struct {
 }
 
 type vulncheckOSV struct {
-	ID       string           `json:"id"`
-	Aliases  []string         `json:"aliases,omitempty"`
+	ID       string              `json:"id"`
+	Aliases  []string            `json:"aliases,omitempty"`
 	Affected []vulncheckAffected `json:"affected,omitempty"`
 }
 
 type vulncheckAffected struct {
-	Package vulncheckPkg       `json:"package"`
-	Ranges  []vulncheckRange   `json:"ranges,omitempty"`
+	Package vulncheckPkg     `json:"package"`
+	Ranges  []vulncheckRange `json:"ranges,omitempty"`
 }
 
 type vulncheckPkg struct {

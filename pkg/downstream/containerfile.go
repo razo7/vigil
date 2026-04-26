@@ -40,9 +40,9 @@ func downstreamBranches(operatorName, operatorVersion string) []string {
 	}
 	ver := strings.ReplaceAll(operatorVersion, ".", "-")
 	return []string{
-		fmt.Sprintf("%s-%s", short, ver),                            // e.g., "far-0-8"
-		fmt.Sprintf("rhwa-%s-%s-rhel-8", short, operatorVersion),    // e.g., "rhwa-far-0.4-rhel-8"
-		fmt.Sprintf("rhwa-%s-%s-rhel-9", short, operatorVersion),    // e.g., "rhwa-far-0.8-rhel-9"
+		fmt.Sprintf("%s-%s", short, ver),                         // e.g., "far-0-8"
+		fmt.Sprintf("rhwa-%s-%s-rhel-8", short, operatorVersion), // e.g., "rhwa-far-0.4-rhel-8"
+		fmt.Sprintf("rhwa-%s-%s-rhel-9", short, operatorVersion), // e.g., "rhwa-far-0.8-rhel-9"
 	}
 }
 

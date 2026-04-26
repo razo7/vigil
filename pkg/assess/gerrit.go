@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	clNumberRe   = regexp.MustCompile(`go-review\.googlesource\.com/c/go/\+/(\d+)`)
-	diffFileRe   = regexp.MustCompile(`^diff --git a/(.+) b/`)
-	hunkFuncRe   = regexp.MustCompile(`^@@[^@]+@@\s+func\s+(?:\([^)]+\)\s+)?(\w+)\s*[\(\[]`)
+	clNumberRe    = regexp.MustCompile(`go-review\.googlesource\.com/c/go/\+/(\d+)`)
+	diffFileRe    = regexp.MustCompile(`^diff --git a/(.+) b/`)
+	hunkFuncRe    = regexp.MustCompile(`^@@[^@]+@@\s+func\s+(?:\([^)]+\)\s+)?(\w+)\s*[\(\[]`)
 	changedFuncRe = regexp.MustCompile(`^[+-]\s*func\s+(?:\([^)]+\)\s+)?(\w+)\s*[\(\[]`)
 )
 

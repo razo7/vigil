@@ -13,29 +13,29 @@ import (
 )
 
 var (
-	jsonKeyRe       = regexp.MustCompile(`^(\s*)"([^"]+)":`)
-	jsonStringRe    = regexp.MustCompile(`:\s*"(.*)"(,?)$`)
-	jsonNumberRe    = regexp.MustCompile(`:\s*(\d+\.?\d*)(,?)$`)
-	jsonBoolRe      = regexp.MustCompile(`:\s*(true|false)(,?)$`)
-	jsonNullRe      = regexp.MustCompile(`:\s*(null)(,?)$`)
+	jsonKeyRe        = regexp.MustCompile(`^(\s*)"([^"]+)":`)
+	jsonStringRe     = regexp.MustCompile(`:\s*"(.*)"(,?)$`)
+	jsonNumberRe     = regexp.MustCompile(`:\s*(\d+\.?\d*)(,?)$`)
+	jsonBoolRe       = regexp.MustCompile(`:\s*(true|false)(,?)$`)
+	jsonNullRe       = regexp.MustCompile(`:\s*(null)(,?)$`)
 	jsonBareStringRe = regexp.MustCompile(`^(\s*)"(.*)"(,?)$`)
-	ocpTierRe       = regexp.MustCompile(`(Platform Aligned|Rolling Stream)( OCP )([\d., ]+)`)
+	ocpTierRe        = regexp.MustCompile(`(Platform Aligned|Rolling Stream)( OCP )([\d., ]+)`)
 )
 
 const (
 	colorReset    = "\033[0m"
-	colorKey      = "\033[36m"    // cyan
-	colorString   = "\033[33m"    // yellow
-	colorNumber   = "\033[35m"    // magenta
-	colorBool     = "\033[34m"    // blue
-	colorNull     = "\033[90m"    // gray
-	colorBrace    = "\033[37m"    // white
-	colorCrit     = "\033[91m"    // bright red
-	colorHigh     = "\033[31m"    // red
-	colorMed      = "\033[33m"    // yellow
-	colorLow      = "\033[32m"    // green
-	colorMagBold  = "\033[1;35m"  // bold magenta (tier)
-	colorCyanBold = "\033[1;36m"  // bold cyan (OCP version)
+	colorKey      = "\033[36m"   // cyan
+	colorString   = "\033[33m"   // yellow
+	colorNumber   = "\033[35m"   // magenta
+	colorBool     = "\033[34m"   // blue
+	colorNull     = "\033[90m"   // gray
+	colorBrace    = "\033[37m"   // white
+	colorCrit     = "\033[91m"   // bright red
+	colorHigh     = "\033[31m"   // red
+	colorMed      = "\033[33m"   // yellow
+	colorLow      = "\033[32m"   // green
+	colorMagBold  = "\033[1;35m" // bold magenta (tier)
+	colorCyanBold = "\033[1;36m" // bold cyan (OCP version)
 )
 
 func printJSON(v interface{}) error {

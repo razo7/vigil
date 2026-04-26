@@ -51,14 +51,14 @@ func TestClassify_BlockedByGo_HighSeverity(t *testing.T) {
 
 func TestClassify_BlockedByGo_LowPriority(t *testing.T) {
 	in := Input{
-		IsGoVuln:     true,
-		IsReachable:  false,
+		IsGoVuln:       true,
+		IsReachable:    false,
 		IsPackageLevel: true,
-		FixGoVersion: "1.25.9",
-		CurrentGo:    "1.20.0",
-		DownstreamGo: "1.20.0",
-		CVSS:         5.0,
-		SupportPhase: types.PhaseMaintenance,
+		FixGoVersion:   "1.25.9",
+		CurrentGo:      "1.20.0",
+		DownstreamGo:   "1.20.0",
+		CVSS:           5.0,
+		SupportPhase:   types.PhaseMaintenance,
 	}
 
 	class, priority, _ := Classify(in)
