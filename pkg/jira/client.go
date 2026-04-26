@@ -49,6 +49,10 @@ func NewClient() (*Client, error) {
 	}, nil
 }
 
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
 var (
 	versionBracketRe = regexp.MustCompile(`\[(\w+)-(\d+\.\d+)\]`)
 	psComponentRe    = regexp.MustCompile(`pscomponent:(.+)`)

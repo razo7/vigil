@@ -11,6 +11,7 @@ import (
 
 func FormatJiraComment(r *types.Result) string {
 	comment := fmt.Sprintf(`── Vigil Assessment ──────────────────────
+Ticket:         %s (%s)
 CVE:            %s
 Source:         %s
 Severity:       %.1f (%s)
@@ -22,6 +23,7 @@ Operator:       %s
 OCP Version:    %s
 Support Phase:  %s
 `,
+		r.TicketID, r.TicketURL,
 		r.CVEID,
 		r.CVESource,
 		r.Severity, r.SeverityLabel,
@@ -45,9 +47,19 @@ govulncheck:    %s`, r.Reachability)
 		}
 		comment += fmt.Sprintf(`
   Fix version:  %s
-  Current:      %s (toolchain in go.mod)
-  Downstream:   %s
-`, r.FixVersion, r.CurrentGo, r.DownstreamGo)
+  Upstream:     %s [%s]`, r.FixVersion, r.UpstreamGo, r.UpstreamBranch)
+		if r.UpstreamGoModLink != "" {
+			comment += fmt.Sprintf(` %s`, r.UpstreamGoModLink)
+		}
+		comment += fmt.Sprintf(`
+  Downstream:   %s`, r.DownstreamGo)
+		if r.DownstreamBranch != "" {
+			comment += fmt.Sprintf(` [%s]`, r.DownstreamBranch)
+		}
+		if r.DownstreamGoLink != "" {
+			comment += fmt.Sprintf(` %s`, r.DownstreamGoLink)
+		}
+		comment += "\n"
 
 		if r.CallPath != "" {
 			comment += fmt.Sprintf(`
@@ -89,7 +101,7 @@ func WriteSanitizedSummary(path string, r *types.Result) error {
 		Operator:   r.Operator,
 		AssessedAt: r.AssessedAt.Format("2006-01-02T15:04:05Z"),
 		Total:      1,
-		CurrentGo:  r.CurrentGo,
+		CurrentGo:  r.UpstreamGo,
 		NeededGo:   r.FixVersion,
 	}
 

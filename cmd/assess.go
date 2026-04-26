@@ -59,6 +59,6 @@ analysis, check downstream base image compatibility, and classify the CVE.`,
 func init() {
 	assessCmd.Flags().BoolVar(&assessJira, "jira", false, "Post assessment as Jira comment")
 	assessCmd.Flags().StringVar(&assessSummaryFile, "summary-file", "", "Write sanitized summary to file")
-	assessCmd.Flags().StringVar(&assessRepoPath, "repo-path", ".", "Path to operator repo")
+	assessCmd.Flags().StringVar(&assessRepoPath, "repo-path", "", "Path to operator repo (auto-detected from Jira component if omitted)")
 	rootCmd.AddCommand(assessCmd)
 }

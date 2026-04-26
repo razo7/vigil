@@ -3,6 +3,7 @@ package assess
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -77,10 +78,19 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	}
 	currentGo := goMod.EffectiveVersion()
 
+	upstreamBranch := "main"
+	if usedWorktree && ticket.OperatorVersion != "" {
+		upstreamBranch = goversion.ReleaseBranch(ticket.OperatorVersion)
+	}
+	upstreamGoModLink := buildGoModLink(ticket.Component, upstreamBranch, goMod.EffectiveVersionLine())
+
 	downstreamGo := currentGo
+	var downstreamBranch, downstreamGoLink string
 	dsInfo, err := downstream.FetchGoVersion(operatorName, ticket.ImageName, "")
 	if err == nil && dsInfo.GoVersion != "" {
 		downstreamGo = dsInfo.GoVersion
+		downstreamBranch = dsInfo.Branch
+		downstreamGoLink = buildDownstreamLink(operatorName, ticket.ImageName, dsInfo)
 	}
 
 	isGoVuln := isGoRelatedCVE(ticket)
@@ -132,22 +142,27 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	classification, priority, misassignReason := classify.Classify(input)
 
 	result := &types.Result{
-		TicketID:        opts.TicketID,
-		CVEID:           ticket.CVEID,
-		CVESource:       cveSource,
-		Severity:        severity,
-		SeverityLabel:   severityLabel,
-		Classification:  classification,
-		Priority:        priority,
-		OperatorVersion: ticket.OperatorVersion,
-		OCPVersion:      ocpVersion,
-		SupportPhase:    supportPhase,
-		CurrentGo:       currentGo,
-		DownstreamGo:    downstreamGo,
-		Operator:        operatorName,
-		AssessedAt:      time.Now().UTC(),
-		Version:         version,
-		MisassignReason: misassignReason,
+		TicketID:          opts.TicketID,
+		TicketURL:         jiraClient.BaseURL() + "/browse/" + opts.TicketID,
+		CVEID:             ticket.CVEID,
+		CVESource:         cveSource,
+		Severity:          severity,
+		SeverityLabel:     severityLabel,
+		Classification:    classification,
+		Priority:          priority,
+		OperatorVersion:   ticket.OperatorVersion,
+		OCPVersion:        ocpVersion,
+		SupportPhase:      supportPhase,
+		UpstreamGo:        currentGo,
+		UpstreamBranch:    upstreamBranch,
+		UpstreamGoModLink: upstreamGoModLink,
+		DownstreamGo:      downstreamGo,
+		DownstreamBranch:  downstreamBranch,
+		DownstreamGoLink:  downstreamGoLink,
+		Operator:          operatorName,
+		AssessedAt:        time.Now().UTC(),
+		Version:           version,
+		MisassignReason:   misassignReason,
 	}
 
 	if vulnEntry != nil {
@@ -170,7 +185,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	}
 
 	if usedWorktree && isGoVuln {
-		result.MainBranch = assessMainBranch(repoPath, ticket.CVEID)
+		result.MainBranch = assessMainBranch(repoPath, ticket.CVEID, ticket.Component)
 	}
 
 	result.Recommendation = generateRecommendation(result)
@@ -178,7 +193,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	return result, nil
 }
 
-func assessMainBranch(repoPath, cveID string) *types.MainBranchResult {
+func assessMainBranch(repoPath, cveID, component string) *types.MainBranchResult {
 	goMod, err := goversion.ReadGoMod(repoPath)
 	if err != nil {
 		return nil
@@ -186,6 +201,7 @@ func assessMainBranch(repoPath, cveID string) *types.MainBranchResult {
 
 	mbr := &types.MainBranchResult{
 		CurrentGo: goMod.EffectiveVersion(),
+		GoModLink: buildGoModLink(component, "main", goMod.EffectiveVersionLine()),
 	}
 
 	vulnResult, err := goversion.RunGovulncheck(repoPath)
@@ -294,6 +310,31 @@ func extractNonGoPackage(ticket *jira.TicketInfo) string {
 		}
 	}
 	return "unknown"
+}
+
+func buildGoModLink(component, branch string, line int) string {
+	repoURL := deriveRepoURL(component)
+	if repoURL == "" || line == 0 {
+		return ""
+	}
+	repoURL = strings.TrimSuffix(repoURL, ".git")
+	return fmt.Sprintf("%s/blob/%s/go.mod#L%d", repoURL, branch, line)
+}
+
+func buildDownstreamLink(operatorName, imageName string, dsInfo *downstream.ContainerfileInfo) string {
+	if dsInfo.GoVersionLine == 0 {
+		return ""
+	}
+	host := os.Getenv("GITLAB_HOST")
+	if host == "" {
+		host = "https://gitlab.cee.redhat.com"
+	}
+	fileName := "Containerfile"
+	if imageName != "" {
+		fileName = fmt.Sprintf("Containerfile.%s", imageName)
+	}
+	return fmt.Sprintf("%s/dragonfly/%s/-/blob/%s/%s#L%d",
+		host, operatorName, dsInfo.Branch, fileName, dsInfo.GoVersionLine)
 }
 
 func generateRecommendation(r *types.Result) string {

@@ -15,19 +15,20 @@ import (
 )
 
 var (
-	scanComponent   string
-	scanJQL         string
-	scanJira        bool
-	scanSummaryFile string
-	scanRepoPath    string
+	scanComponent    string
+	scanJQL          string
+	scanJira         bool
+	scanSummaryFile  string
+	scanRepoPath     string
+	scanIncludeClosed bool
 )
 
 var componentJQLMap = map[string]string{
-	"far": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Fence Agents Remediation") AND status not in (Closed) ORDER BY created DESC`,
-	"snr": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Self Node Remediation") AND status not in (Closed) ORDER BY created DESC`,
-	"nhc": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Node Healthcheck Controller") AND status not in (Closed) ORDER BY created DESC`,
-	"nmo": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Node Maintenance Operator") AND status not in (Closed) ORDER BY created DESC`,
-	"mdr": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Machine Deletion Remediation") AND status not in (Closed) ORDER BY created DESC`,
+	"far": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Fence Agents Remediation") AND status not in (Closed) ORDER BY created DESC`,
+	"snr": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Self Node Remediation") AND status not in (Closed) ORDER BY created DESC`,
+	"nhc": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Healthcheck Controller") AND status not in (Closed) ORDER BY created DESC`,
+	"nmo": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Maintenance Operator") AND status not in (Closed) ORDER BY created DESC`,
+	"mdr": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Machine Deletion Remediation") AND status not in (Closed) ORDER BY created DESC`,
 }
 
 var scanCmd = &cobra.Command{
@@ -47,6 +48,9 @@ then assess each one.`,
 			jql, ok = componentJQLMap[key]
 			if !ok {
 				return fmt.Errorf("unknown component %q; use --jql for custom queries", scanComponent)
+			}
+			if scanIncludeClosed {
+				jql = strings.Replace(jql, " AND status not in (Closed)", "", 1)
 			}
 		}
 
@@ -128,7 +132,7 @@ func writeBatchSummary(path string, results []*types.Result) error {
 	if len(results) > 0 {
 		summary.Operator = results[0].Operator
 		summary.AssessedAt = results[0].AssessedAt.Format("2006-01-02T15:04:05Z")
-		summary.CurrentGo = results[0].CurrentGo
+		summary.CurrentGo = results[0].UpstreamGo
 	}
 
 	var neededGo string
@@ -163,6 +167,7 @@ func init() {
 	scanCmd.Flags().StringVar(&scanJQL, "jql", "", "Custom JQL query")
 	scanCmd.Flags().BoolVar(&scanJira, "jira", false, "Post assessments as Jira comments")
 	scanCmd.Flags().StringVar(&scanSummaryFile, "summary-file", "", "Write aggregate summary to file")
-	scanCmd.Flags().StringVar(&scanRepoPath, "repo-path", ".", "Path to operator repo")
+	scanCmd.Flags().StringVar(&scanRepoPath, "repo-path", "", "Path to operator repo (auto-detected from Jira component if omitted)")
+	scanCmd.Flags().BoolVar(&scanIncludeClosed, "include-closed", false, "Include closed tickets (for historical validation)")
 	rootCmd.AddCommand(scanCmd)
 }

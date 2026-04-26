@@ -1,6 +1,7 @@
 package goversion
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,39 +10,54 @@ import (
 )
 
 var (
-	toolchainRe = regexp.MustCompile(`(?m)^toolchain\s+go(.+)$`)
-	goVersionRe = regexp.MustCompile(`(?m)^go\s+(.+)$`)
+	toolchainRe = regexp.MustCompile(`^toolchain\s+go(.+)$`)
+	goVersionRe = regexp.MustCompile(`^go\s+(.+)$`)
 )
 
 type GoModInfo struct {
 	MinVersion       string
 	ToolchainVersion string
+	GoLine           int
+	ToolchainLine    int
 }
 
 func ReadGoMod(repoPath string) (*GoModInfo, error) {
-	data, err := os.ReadFile(filepath.Join(repoPath, "go.mod"))
+	f, err := os.Open(filepath.Join(repoPath, "go.mod"))
 	if err != nil {
 		return nil, fmt.Errorf("reading go.mod: %w", err)
 	}
+	defer f.Close()
 
-	content := string(data)
 	info := &GoModInfo{}
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
 
-	if m := goVersionRe.FindStringSubmatch(content); len(m) > 1 {
-		info.MinVersion = strings.TrimSpace(m[1])
-	}
-
-	if m := toolchainRe.FindStringSubmatch(content); len(m) > 1 {
-		info.ToolchainVersion = strings.TrimSpace(m[1])
+		if m := goVersionRe.FindStringSubmatch(line); len(m) > 1 {
+			info.MinVersion = strings.TrimSpace(m[1])
+			info.GoLine = lineNum
+		}
+		if m := toolchainRe.FindStringSubmatch(line); len(m) > 1 {
+			info.ToolchainVersion = strings.TrimSpace(m[1])
+			info.ToolchainLine = lineNum
+		}
 	}
 
 	return info, nil
 }
 
-// EffectiveVersion returns the toolchain version if set, otherwise the min version.
 func (g *GoModInfo) EffectiveVersion() string {
 	if g.ToolchainVersion != "" {
 		return g.ToolchainVersion
 	}
 	return g.MinVersion
+}
+
+func (g *GoModInfo) EffectiveVersionLine() int {
+	if g.ToolchainVersion != "" {
+		return g.ToolchainLine
+	}
+	return g.GoLine
 }

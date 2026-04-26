@@ -51,7 +51,7 @@ go install golang.org/x/vuln/cmd/govulncheck@latest
 
 ```bash
 podman build -t vigil -f Containerfile .
-podman run -e JIRA_API_TOKEN=$JIRA_API_TOKEN vigil assess RHWA-881
+podman run --rm -e JIRA_API_TOKEN=$JIRA_API_TOKEN vigil assess RHWA-881
 ```
 
 ## Usage

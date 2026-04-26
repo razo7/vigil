@@ -15,9 +15,10 @@ const defaultGitLabHost = "https://gitlab.cee.redhat.com"
 var goVersionRe = regexp.MustCompile(`golang[:\-](\d+\.\d+(?:\.\d+)?)`)
 
 type ContainerfileInfo struct {
-	GoVersion string
-	Branch    string
-	ImageName string
+	GoVersion     string
+	GoVersionLine int
+	Branch        string
+	ImageName     string
 }
 
 func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo, error) {
@@ -47,12 +48,13 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 		return nil, err
 	}
 
-	goVersion := extractGoVersion(content)
+	goVersion, goLine := extractGoVersion(content)
 
 	return &ContainerfileInfo{
-		GoVersion: goVersion,
-		Branch:    ref,
-		ImageName: imageName,
+		GoVersion:     goVersion,
+		GoVersionLine: goLine,
+		Branch:        ref,
+		ImageName:     imageName,
 	}, nil
 }
 
@@ -87,20 +89,23 @@ func fetchFileFromGitLab(host, token, projectPath, filePath, ref string) (string
 	return string(body), nil
 }
 
-func extractGoVersion(containerfileContent string) string {
-	for _, line := range strings.Split(containerfileContent, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(strings.ToUpper(line), "FROM") {
+func extractGoVersion(containerfileContent string) (string, int) {
+	lines := strings.Split(containerfileContent, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(strings.ToUpper(trimmed), "FROM") {
 			continue
 		}
-		if m := goVersionRe.FindStringSubmatch(line); len(m) == 2 {
-			return m[1]
+		if m := goVersionRe.FindStringSubmatch(trimmed); len(m) == 2 {
+			return m[1], i + 1
 		}
 	}
 
-	if m := goVersionRe.FindStringSubmatch(containerfileContent); len(m) == 2 {
-		return m[1]
+	for i, line := range lines {
+		if m := goVersionRe.FindStringSubmatch(line); len(m) == 2 {
+			return m[1], i + 1
+		}
 	}
 
-	return ""
+	return "", 0
 }

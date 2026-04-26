@@ -44,7 +44,7 @@ func TestExtractGoVersion(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := extractGoVersion(tc.content)
+			got, _ := extractGoVersion(tc.content)
 			if got != tc.expected {
 				t.Errorf("extractGoVersion() = %q, want %q", got, tc.expected)
 			}
