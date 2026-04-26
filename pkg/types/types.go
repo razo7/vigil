@@ -39,6 +39,8 @@ const (
 type SourceInfo struct {
 	TicketID          string   `json:"ticket_id"`
 	AffectedOperatorVersion string `json:"affected operator version"`
+	Status            string   `json:"status"`
+	Resolution        string   `json:"resolution,omitempty"`
 	Reporter          string   `json:"reporter,omitempty"`
 	Assignee          string   `json:"assignee,omitempty"`
 	DueDate           string   `json:"due_date,omitempty"`

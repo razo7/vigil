@@ -71,6 +71,7 @@ type TicketInfo struct {
 	AffectsVersions  []string
 	OperatorVersion  string
 	Status           string
+	Resolution       string
 	Labels           []string
 	Reporter         string
 	Assignee         string
@@ -112,7 +113,7 @@ func (c *Client) FetchTicket(ticketID string) (*TicketInfo, error) {
 }
 
 func (c *Client) SearchTickets(jql string) ([]TicketInfo, error) {
-	url := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=50&fields=key,summary,status,components,fixVersions,versions,labels,description,reporter,assignee,duedate,priority",
+	url := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=50&fields=key,summary,status,resolution,components,fixVersions,versions,labels,description,reporter,assignee,duedate,priority",
 		c.baseURL, encode(jql))
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -251,6 +252,7 @@ func parseTicket(raw map[string]interface{}) (*TicketInfo, error) {
 
 	info.Summary = getString(fields, "summary")
 	info.Status = getNestedString(fields, "status", "name")
+	info.Resolution = getNestedString(fields, "resolution", "name")
 
 	info.CVEID = getString(fields, "customfield_10667")
 	if info.CVEID == "" {

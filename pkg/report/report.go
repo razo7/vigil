@@ -42,8 +42,10 @@ Severity:       %.1f (%s)`,
 	}
 	comment += fmt.Sprintf(`
 
-Affected:       %s`,
+Affected:       %s
+Status:         %s`,
 		r.Source.AffectedOperatorVersion,
+		formatStatus(r.Source.Status, r.Source.Resolution),
 	)
 
 	if len(r.Source.OCPSupport) > 0 {
@@ -148,6 +150,13 @@ func formatFixUpstreamSection(fu *types.FixUpstreamInfo, classification types.Cl
 	}
 
 	return section
+}
+
+func formatStatus(status, resolution string) string {
+	if resolution != "" {
+		return fmt.Sprintf("%s (%s)", status, resolution)
+	}
+	return status
 }
 
 type SanitizedSummary struct {

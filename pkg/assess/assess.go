@@ -182,6 +182,8 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		Source: types.SourceInfo{
 			TicketID:          fmt.Sprintf("%s (%s/browse/%s)", opts.TicketID, jiraClient.BaseURL(), opts.TicketID),
 			AffectedOperatorVersion: formatOperator(operatorName, ticket.OperatorVersion),
+			Status:            ticket.Status,
+			Resolution:        ticket.Resolution,
 			Reporter:          ticket.Reporter,
 			Assignee:          ticket.Assignee,
 			DueDate:           ticket.DueDate,

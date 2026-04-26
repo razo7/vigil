@@ -180,17 +180,17 @@ func writeBatchSummary(path string, results []*types.Result) error {
 func printScanTable(results []*types.Result, errors []string) {
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 
-	headerFmt := "%-18s %-8s %-16s %-14s %5s %-14s %s\n"
-	rowFmt := "%-18s %-8s %-16s %-14s %5.1f %-14s %s\n"
-	lineWidth := 105
+	headerFmt := "%-18s %-8s %-18s %-16s %-14s %5s %-14s %s\n"
+	rowFmt := "%-18s %-8s %-18s %-16s %-14s %5.1f %-14s %s\n"
+	lineWidth := 120
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
-			"TICKET", "VERSION", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
+			"TICKET", "VERSION", "STATUS", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(headerFmt,
-			"TICKET", "VERSION", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
+			"TICKET", "VERSION", "STATUS", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
@@ -198,6 +198,7 @@ func printScanTable(results []*types.Result, errors []string) {
 	for _, r := range results {
 		ticket := extractTicketID(r.Source.TicketID)
 		version := extractVersion(r.Source.AffectedOperatorVersion)
+		status := shortStatus(r.Source.Status, r.Source.Resolution)
 		class := string(r.Recommendation.Classification)
 		priority := shortPriority(r.Recommendation.Priority)
 		cvss := r.Vulnerability.Severity
@@ -209,13 +210,15 @@ func printScanTable(results []*types.Result, errors []string) {
 		if isTTY {
 			classColor := colorForClassification(r.Recommendation.Classification)
 			prioColor := colorForPriority(r.Recommendation.Priority)
-			fmt.Printf("%-18s %-8s %s%-16s%s %s%-14s%s %5.1f %-14s %s\n",
+			statusColor := colorForStatus(r.Source.Status)
+			fmt.Printf("%-18s %-8s %s%-18s%s %s%-16s%s %s%-14s%s %5.1f %-14s %s\n",
 				ticket, version,
+				statusColor, status, colorReset,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
 				cvss, reach, pkg)
 		} else {
-			fmt.Printf(rowFmt, ticket, version, class, priority, cvss, reach, pkg)
+			fmt.Printf(rowFmt, ticket, version, status, class, priority, cvss, reach, pkg)
 		}
 	}
 
@@ -260,6 +263,24 @@ func extractVersion(s string) string {
 		return s[i+1:]
 	}
 	return ""
+}
+
+func shortStatus(status, resolution string) string {
+	if resolution != "" {
+		return fmt.Sprintf("%s (%s)", status, resolution)
+	}
+	return status
+}
+
+func colorForStatus(status string) string {
+	switch status {
+	case "Closed":
+		return colorNull
+	case "New", "To Do":
+		return colorString
+	default:
+		return colorCyanBold
+	}
 }
 
 func shortPriority(p types.Priority) string {
