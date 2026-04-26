@@ -33,13 +33,24 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		return nil, fmt.Errorf("no CVE ID found in ticket %s", opts.TicketID)
 	}
 
-	repoPath := opts.RepoPath
-	if repoPath == "" {
-		repoPath = "."
+	operatorName := deriveOperatorName(ticket.Component)
+
+	repoInput := opts.RepoPath
+	if repoInput == "" {
+		repoInput = deriveRepoURL(ticket.Component)
+		if repoInput == "" {
+			repoInput = "."
+		}
+	}
+
+	repoPath, repoCleanup, err := resolveRepoPath(repoInput)
+	if err != nil {
+		return nil, fmt.Errorf("resolving repo path: %w", err)
+	}
+	if repoCleanup != nil {
+		defer repoCleanup()
 	}
 	repoPath, _ = filepath.Abs(repoPath)
-
-	operatorName := deriveOperatorName(ticket.Component)
 
 	scanPath := repoPath
 	usedWorktree := false
@@ -204,24 +215,37 @@ func assessMainBranch(repoPath, cveID string) *types.MainBranchResult {
 	return mbr
 }
 
-func deriveOperatorName(component string) string {
-	// POC: hardcoded mapping. Production should use live lookup from Jira component metadata.
-	nameMap := map[string]string{
-		"fence agents remediation":     "fence-agents-remediation",
-		"self node remediation":        "self-node-remediation",
-		"node healthcheck controller":  "node-healthcheck-controller",
-		"node maintenance operator":    "node-maintenance-operator",
-		"machine deletion remediation": "machine-deletion-remediation",
-	}
+type operatorInfo struct {
+	Name    string
+	RepoURL string
+}
 
+var operatorMap = map[string]operatorInfo{
+	"fence agents remediation":     {Name: "fence-agents-remediation", RepoURL: "https://github.com/medik8s/fence-agents-remediation.git"},
+	"self node remediation":        {Name: "self-node-remediation", RepoURL: "https://github.com/medik8s/self-node-remediation.git"},
+	"node healthcheck controller":  {Name: "node-healthcheck-controller", RepoURL: "https://github.com/medik8s/node-healthcheck-operator.git"},
+	"node maintenance operator":    {Name: "node-maintenance-operator", RepoURL: "https://github.com/medik8s/node-maintenance-operator.git"},
+	"machine deletion remediation": {Name: "machine-deletion-remediation", RepoURL: "https://github.com/medik8s/machine-deletion-remediation.git"},
+}
+
+func deriveOperatorName(component string) string {
 	lower := strings.ToLower(component)
-	for key, val := range nameMap {
+	for key, info := range operatorMap {
 		if strings.Contains(lower, key) {
-			return val
+			return info.Name
 		}
 	}
-
 	return strings.ToLower(strings.ReplaceAll(component, " ", "-"))
+}
+
+func deriveRepoURL(component string) string {
+	lower := strings.ToLower(component)
+	for key, info := range operatorMap {
+		if strings.Contains(lower, key) {
+			return info.RepoURL
+		}
+	}
+	return ""
 }
 
 func isGoRelatedCVE(ticket *jira.TicketInfo) bool {
