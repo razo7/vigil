@@ -11,7 +11,7 @@ permissions:
 jobs:
   push_to_registry:
     name: Build and push image to quay.io/oraz/vigil
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
