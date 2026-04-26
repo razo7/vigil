@@ -26,11 +26,11 @@ var (
 )
 
 var componentJQLMap = map[string]string{
-	"far": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Fence Agents Remediation") AND status not in (Closed) ORDER BY created DESC`,
-	"snr": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Self Node Remediation") AND status not in (Closed) ORDER BY created DESC`,
-	"nhc": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Node Healthcheck Controller") AND status not in (Closed) ORDER BY created DESC`,
-	"nmo": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Node Maintenance Operator") AND status not in (Closed) ORDER BY created DESC`,
-	"mdr": `project in (RHWA, ECOPROJECT) AND issuetype = Vulnerability AND component in ("Machine Deletion Remediation") AND status not in (Closed) ORDER BY created DESC`,
+	"far": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Fence Agents Remediation") AND status not in (Closed) ORDER BY created DESC`,
+	"snr": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Self Node Remediation") AND status not in (Closed) ORDER BY created DESC`,
+	"nhc": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Healthcheck Controller") AND status not in (Closed) ORDER BY created DESC`,
+	"nmo": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Maintenance Operator") AND status not in (Closed) ORDER BY created DESC`,
+	"mdr": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Machine Deletion Remediation") AND status not in (Closed) ORDER BY created DESC`,
 }
 
 var scanCmd = &cobra.Command{
