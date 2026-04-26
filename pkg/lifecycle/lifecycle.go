@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -269,10 +270,16 @@ var rhwaToOCP = map[string]string{
 	"rhwa-26.1": "4.21",
 }
 
+var ocpVersionRe = regexp.MustCompile(`^(?:OpenShift|OCP)\s+(4\.\d+)$`)
+
 func LookupOperatorVersionFromRHWA(operatorName, rhwaVersion string) string {
 	ocpVersion, ok := rhwaToOCP[rhwaVersion]
 	if !ok {
-		return ""
+		if m := ocpVersionRe.FindStringSubmatch(rhwaVersion); len(m) == 2 {
+			ocpVersion = m[1]
+		} else {
+			return ""
+		}
 	}
 
 	mappings, ok := operatorMappings[operatorName]

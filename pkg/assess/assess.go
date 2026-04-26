@@ -176,14 +176,25 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 				input.FixFunctionMismatch = true
 			}
 		}
+	} else if isGoVuln {
+		pkg := jira.ExtractGoPackage(ticket.Summary)
+		if pkg == "" && cveInfo != nil {
+			pkg = jira.ExtractGoPackage(cveInfo.Description)
+		}
+		if pkg != "" {
+			if goversion.IsPackageImported(scanPath, pkg) {
+				input.IsPackageLevel = true
+			}
+		}
 	}
 
 	classification, priority, misassignReason := classify.Classify(input)
 
 	// Build branch analysis for the scanned branch
+	fallbackImported := vulnEntry == nil && isGoVuln && input.IsPackageLevel
 	ba := buildBranchAnalysis(branchName, currentGo,
 		buildGoModLink(ticket.Component, branchName, goMod.EffectiveVersionLine()),
-		vulnEntry, isGoVuln, input.FixFunctionMismatch, input.TestOnly)
+		vulnEntry, isGoVuln, input.FixFunctionMismatch, input.TestOnly, fallbackImported)
 
 	// Populate downstream and catalog component info
 	ba.Downstream, ba.CatalogComponent = buildDownstreamInfo(operatorName, dsInfo, dsComponent)
@@ -241,7 +252,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	return result, nil
 }
 
-func buildBranchAnalysis(branch, goVersion, goModLink string, vulnEntry *goversion.VulnEntry, isGoVuln bool, fixFuncMismatch bool, testOnly bool) *types.BranchAnalysis {
+func buildBranchAnalysis(branch, goVersion, goModLink string, vulnEntry *goversion.VulnEntry, isGoVuln bool, fixFuncMismatch bool, testOnly bool, fallbackImported bool) *types.BranchAnalysis {
 	goVersionStr := goVersion
 	if goModLink != "" {
 		goVersionStr = fmt.Sprintf("%s (%s)", goVersion, goModLink)
@@ -267,7 +278,11 @@ func buildBranchAnalysis(branch, goVersion, goModLink string, vulnEntry *goversi
 			ba.Reachability = "MODULE-LEVEL (in go.mod but package not imported)"
 		}
 	} else if isGoVuln {
-		ba.Reachability = "UNKNOWN (CVE not in Go vuln DB)"
+		if fallbackImported {
+			ba.Reachability = "PACKAGE-LEVEL (not in vuln DB, but package imported)"
+		} else {
+			ba.Reachability = "NOT-IMPORTED (not in vuln DB, package not found in codebase)"
+		}
 	} else {
 		ba.Reachability = "N/A (non-Go)"
 	}
@@ -500,14 +515,20 @@ func fixFunctionsInCallPaths(fixFunctions string, callPaths []string) bool {
 
 func extractNonGoPackage(ticket *jira.TicketInfo) string {
 	lower := strings.ToLower(ticket.Summary)
-	packages := []string{"urllib3", "requests", "setuptools", "pip"}
+	packages := []string{"urllib3", "requests", "setuptools", "pip", "goproxy",
+		"go-yaml", "protobuf", "grpc", "containerd", "runc", "etcd"}
 	for _, pkg := range packages {
 		if strings.Contains(lower, pkg) {
 			return pkg
 		}
 	}
+	if m := nonGoPkgRe.FindStringSubmatch(ticket.Summary); len(m) == 2 {
+		return strings.TrimSpace(m[1])
+	}
 	return "unknown"
 }
+
+var nonGoPkgRe = regexp.MustCompile(`(?:container|operator-container):\s+(.+?):\s+`)
 
 var goVulnIDRe = regexp.MustCompile(`GO-\d{4}-\d+`)
 

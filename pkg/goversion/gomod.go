@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -60,4 +61,41 @@ func (g *GoModInfo) EffectiveVersionLine() int {
 		return g.ToolchainLine
 	}
 	return g.GoLine
+}
+
+func IsPackageInGoMod(repoPath, pkg string) bool {
+	data, err := os.ReadFile(filepath.Join(repoPath, "go.mod"))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), pkg)
+}
+
+func IsStdlibPackage(pkg string) bool {
+	return !strings.Contains(pkg, ".")
+}
+
+func IsPackageImported(repoPath, pkg string) bool {
+	if IsStdlibPackage(pkg) {
+		return isStdlibImported(repoPath, pkg)
+	}
+	return IsPackageInGoMod(repoPath, moduleFromPackage(pkg))
+}
+
+func isStdlibImported(repoPath, pkg string) bool {
+	cmd := exec.Command("grep", "-r", "--include=*.go", "-l",
+		fmt.Sprintf(`"%s"`, pkg), repoPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(out) > 0
+}
+
+func moduleFromPackage(pkg string) string {
+	parts := strings.Split(pkg, "/")
+	if len(parts) >= 3 {
+		return strings.Join(parts[:3], "/")
+	}
+	return pkg
 }

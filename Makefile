@@ -1,4 +1,4 @@
-IMAGE_REGISTRY ?= quay.io/razo
+IMAGE_REGISTRY ?= quay.io/oraz
 IMAGE_NAME ?= vigil
 VERSION ?= 0.0.1
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME)

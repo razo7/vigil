@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   push_to_registry:
-    name: Build and push image to quay.io/razo/vigil
+    name: Build and push image to quay.io/oraz/vigil
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
