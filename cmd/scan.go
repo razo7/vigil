@@ -186,17 +186,17 @@ func writeBatchSummary(path string, results []*types.Result) error {
 func printScanTable(results []*types.Result, errors []string) {
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 
-	headerFmt := "%-18s %-8s %-18s %-16s %-14s %5s %-14s %s\n"
-	rowFmt := "%-18s %-8s %-18s %-16s %-14s %5.1f %-14s %s\n"
-	lineWidth := 120
+	headerFmt := "%-18s %-16s %-8s %-4s %-18s %-16s %-14s %5s %-14s %s\n"
+	rowFmt := "%-18s %-16s %-8s %-4s %-18s %-16s %-14s %5.1f %-14s %s\n"
+	lineWidth := 140
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
-			"TICKET", "VERSION", "STATUS", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
+			"TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(headerFmt,
-			"TICKET", "VERSION", "STATUS", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
+			"TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
@@ -204,7 +204,9 @@ func printScanTable(results []*types.Result, errors []string) {
 	for _, r := range results {
 		ticket := extractTicketID(r.Source.TicketID)
 		ticketURL := extractTicketURL(r.Source.TicketID)
+		cveID := shortCVEID(r.Vulnerability.CVEID)
 		version := extractVersion(r.Source.AffectedOperatorVersion)
+		lang := shortLanguage(r.Vulnerability.Language)
 		status := shortStatus(r.Source.Status, r.Source.Resolution)
 		class := string(r.Recommendation.Classification)
 		priority := shortPriority(r.Recommendation.Priority)
@@ -216,17 +218,18 @@ func printScanTable(results []*types.Result, errors []string) {
 
 		if isTTY {
 			ticketDisplay := termLink(fmt.Sprintf("%-18s", ticket), ticketURL)
+			cveDisplay := termLink(fmt.Sprintf("%-16s", cveID), extractCVEURL(r.Vulnerability.CVEID))
 			classColor := colorForClassification(r.Recommendation.Classification)
 			prioColor := colorForPriority(r.Recommendation.Priority)
 			statusColor := colorForStatus(r.Source.Status)
-			fmt.Printf("%s %-8s %s%-18s%s %s%-16s%s %s%-14s%s %5.1f %-14s %s\n",
-				ticketDisplay, version,
+			fmt.Printf("%s %s %-8s %-4s %s%-18s%s %s%-16s%s %s%-14s%s %5.1f %-14s %s\n",
+				ticketDisplay, cveDisplay, version, lang,
 				statusColor, status, colorReset,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
 				cvss, reach, pkg)
 		} else {
-			fmt.Printf(rowFmt, ticket, version, status, class, priority, cvss, reach, pkg)
+			fmt.Printf(rowFmt, ticket, cveID, version, lang, status, class, priority, cvss, reach, pkg)
 		}
 	}
 
@@ -280,6 +283,45 @@ func termLink(text, url string) string {
 		return text
 	}
 	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, text)
+}
+
+func shortCVEID(s string) string {
+	if i := strings.Index(s, " "); i > 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func extractCVEURL(s string) string {
+	if start := strings.Index(s, "("); start >= 0 {
+		if end := strings.Index(s[start:], ")"); end >= 0 {
+			return s[start+1 : start+end]
+		}
+	}
+	return ""
+}
+
+func shortLanguage(lang string) string {
+	switch lang {
+	case "Golang":
+		return "Go"
+	case "Python":
+		return "Py"
+	case "JavaScript":
+		return "JS"
+	case "Ruby":
+		return "Rb"
+	case "Java":
+		return "Jv"
+	case "C":
+		return "C"
+	case "PHP":
+		return "PHP"
+	case "Perl":
+		return "Pl"
+	default:
+		return "?"
+	}
 }
 
 func extractVersion(s string) string {

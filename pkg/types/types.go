@@ -56,6 +56,7 @@ type VulnInfo struct {
 	Description        string  `json:"description,omitempty"`
 	Severity           float64 `json:"severity"`
 	SeverityLabel      string  `json:"severity_label"`
+	Language           string  `json:"language,omitempty"`
 	VulnID             string  `json:"vuln_id,omitempty"`
 	Package            string  `json:"package,omitempty"`
 	FixVersion         string  `json:"fix_version,omitempty"`

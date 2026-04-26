@@ -20,7 +20,7 @@ var (
 	operatorVerInRe = regexp.MustCompile(`(?i)(?:FAR|SNR|NHC|NMO|MDR)\s+v?(\d+\.\d+(?:\.\d+)?)`)
 	goPackageRe     = regexp.MustCompile(`(?i)(golang\.org/x/\S+|github\.com/[\w\-]+/[\w\-]+(?:/\S+)?|google\.golang\.org/\S+|gopkg\.in/\S+)`)
 	stdlibPkgRe     = regexp.MustCompile(`(?i)\b(crypto/\w+|net/\w+|encoding/\w+|archive/\w+|compress/\w+|html/\w+|text/\w+|math/\w+|os/\w+|path/\w+|regexp|database/\w+|image/\w+)\b`)
-	golangPkgRe     = regexp.MustCompile(`(?i)golang:\s+([\w/]+[\w])`)
+	golangPkgRe     = regexp.MustCompile(`(?i)golang:\s+([\w]+/[\w/]+)`)
 )
 
 type Client struct {

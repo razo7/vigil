@@ -218,6 +218,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 			CVEID:         cveID,
 			Severity:      severity,
 			SeverityLabel: severityLabel,
+			Language:      detectLanguage(isGoVuln, ticket),
 		},
 		Recommendation: types.RecommendationInfo{
 			Classification:  classification,
@@ -511,6 +512,32 @@ func fixFunctionsInCallPaths(fixFunctions string, callPaths []string) bool {
 		}
 	}
 	return false
+}
+
+func detectLanguage(isGoVuln bool, ticket *jira.TicketInfo) string {
+	if isGoVuln {
+		return "Golang"
+	}
+	lower := strings.ToLower(ticket.Summary)
+	switch {
+	case strings.Contains(lower, "python") || strings.Contains(lower, "urllib3") ||
+		strings.Contains(lower, "setuptools") || strings.Contains(lower, " pip "):
+		return "Python"
+	case strings.Contains(lower, "node.js") || strings.Contains(lower, " npm "):
+		return "JavaScript"
+	case strings.Contains(lower, "ruby"):
+		return "Ruby"
+	case strings.Contains(lower, "java "):
+		return "Java"
+	case strings.Contains(lower, "perl "):
+		return "Perl"
+	case strings.Contains(lower, "php "):
+		return "PHP"
+	case strings.Contains(lower, "glibc") || strings.Contains(lower, "c library") ||
+		strings.Contains(lower, "libxml"):
+		return "C"
+	}
+	return "Unknown"
 }
 
 func extractNonGoPackage(ticket *jira.TicketInfo) string {
