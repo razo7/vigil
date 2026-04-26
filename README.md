@@ -78,12 +78,22 @@ vigil assess RHWA-881 --jira
 ### Batch scan all tickets for a component
 
 ```bash
+# Short table format (default for quick overview)
+vigil scan --component FAR --short
+
+# Full JSON output (detailed per-ticket results)
 vigil scan --component FAR
-vigil scan --component SNR --repo-path /path/to/self-node-remediation
+
+# Include closed tickets for historical reference
+vigil scan --component FAR --short --include-closed
+
+# Post results to Jira and write aggregate summary
 vigil scan --component FAR --jira --summary-file vigil-summary.json
 ```
 
 Supported components: `FAR`, `SNR`, `NHC`, `NMO`, `MDR`.
+
+Scan queries both RHWA and ECOPROJECT Jira projects for CVE tickets matching the component.
 
 ### Example output
 
@@ -140,6 +150,18 @@ Supported components: `FAR`, `SNR`, `NHC`, `NMO`, `MDR`.
   "assessed_at": "2026-04-26T13:00:00Z",
   "vigil_version": "0.1.0"
 }
+```
+
+### Short table output (`--short`)
+
+```
+TICKET       VERSION    CLASSIFICATION   PRIORITY    CVSS REACHABILITY   PACKAGE
+───────────────────────────────────────────────────────────────────────────────────────────────
+RHWA-811     v0.4       Not Reachable    Low          7.5 MODULE-LEVEL   crypto/x509
+RHWA-812     v0.4       Misassigned      Misassigned  5.0 N/A            urllib3
+RHWA-813     v0.7       Blocked by Go    Critical     8.1 REACHABLE      crypto/tls
+───────────────────────────────────────────────────────────────────────────────────────────────
+3 assessed, 1 blocked, 1 not-reachable, 1 misassigned
 ```
 
 ## Classification logic

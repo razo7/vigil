@@ -12,6 +12,7 @@ import (
 	"github.com/razo7/vigil/pkg/report"
 	"github.com/razo7/vigil/pkg/types"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -21,6 +22,7 @@ var (
 	scanSummaryFile   string
 	scanRepoPath      string
 	scanIncludeClosed bool
+	scanShort         bool
 )
 
 var componentJQLMap = map[string]string{
@@ -103,15 +105,18 @@ then assess each one.`,
 			}
 		}
 
-		output := map[string]interface{}{
-			"total":    len(tickets),
-			"assessed": len(results),
-			"errors":   len(errors),
-			"results":  results,
-		}
-
-		if err := printJSON(output); err != nil {
-			return fmt.Errorf("marshaling output: %w", err)
+		if scanShort {
+			printScanTable(results, errors)
+		} else {
+			output := map[string]interface{}{
+				"total":    len(tickets),
+				"assessed": len(results),
+				"errors":   len(errors),
+				"results":  results,
+			}
+			if err := printJSON(output); err != nil {
+				return fmt.Errorf("marshaling output: %w", err)
+			}
 		}
 
 		if scanSummaryFile != "" {
@@ -169,6 +174,149 @@ func writeBatchSummary(path string, results []*types.Result) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+func printScanTable(results []*types.Result, errors []string) {
+	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
+
+	headerFmt := "%-12s %-10s %-16s %-10s %5s %-14s %s\n"
+	rowFmt := "%-12s %-10s %-16s %-10s %5.1f %-14s %s\n"
+
+	if isTTY {
+		fmt.Printf("\033[1m"+headerFmt+colorReset,
+			"TICKET", "VERSION", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
+		fmt.Println(strings.Repeat("─", 95))
+	} else {
+		fmt.Printf(headerFmt,
+			"TICKET", "VERSION", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
+		fmt.Println(strings.Repeat("-", 95))
+	}
+
+	counts := map[types.Classification]int{}
+	for _, r := range results {
+		ticket := extractTicketID(r.Source.TicketID)
+		version := extractVersion(r.Source.AffectedOperatorVersion)
+		class := string(r.Recommendation.Classification)
+		priority := string(r.Recommendation.Priority)
+		cvss := r.Vulnerability.Severity
+		reach := shortReachability(r)
+		pkg := shortPackage(r.Vulnerability.Package)
+
+		counts[r.Recommendation.Classification]++
+
+		if isTTY {
+			classColor := colorForClassification(r.Recommendation.Classification)
+			prioColor := colorForPriority(r.Recommendation.Priority)
+			fmt.Printf("%-12s %-10s %s%-16s%s %s%-10s%s %5.1f %-14s %s\n",
+				ticket, version,
+				classColor, class, colorReset,
+				prioColor, priority, colorReset,
+				cvss, reach, pkg)
+		} else {
+			fmt.Printf(rowFmt, ticket, version, class, priority, cvss, reach, pkg)
+		}
+	}
+
+	if isTTY {
+		fmt.Println(strings.Repeat("─", 95))
+	} else {
+		fmt.Println(strings.Repeat("-", 95))
+	}
+
+	var summary []string
+	summary = append(summary, fmt.Sprintf("%d assessed", len(results)))
+	if n := counts[types.FixableNow]; n > 0 {
+		summary = append(summary, fmt.Sprintf("%d fixable", n))
+	}
+	if n := counts[types.BlockedByGo]; n > 0 {
+		summary = append(summary, fmt.Sprintf("%d blocked", n))
+	}
+	if n := counts[types.NotReachable]; n > 0 {
+		summary = append(summary, fmt.Sprintf("%d not-reachable", n))
+	}
+	if n := counts[types.NotGo]; n > 0 {
+		summary = append(summary, fmt.Sprintf("%d not-go", n))
+	}
+	if n := counts[types.Misassigned]; n > 0 {
+		summary = append(summary, fmt.Sprintf("%d misassigned", n))
+	}
+	if len(errors) > 0 {
+		summary = append(summary, fmt.Sprintf("%d errors", len(errors)))
+	}
+	fmt.Println(strings.Join(summary, ", "))
+}
+
+func extractTicketID(s string) string {
+	if i := strings.Index(s, " "); i > 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func extractVersion(s string) string {
+	if i := strings.Index(s, ":"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
+}
+
+func shortReachability(r *types.Result) string {
+	if ba := r.Analysis.ReleaseBranch; ba != nil {
+		return firstWord(ba.Reachability)
+	}
+	if fu := r.Analysis.FixUpstream; fu != nil {
+		return firstWord(fu.Reachability)
+	}
+	return "N/A"
+}
+
+func firstWord(s string) string {
+	if i := strings.IndexByte(s, ' '); i > 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func shortPackage(pkg string) string {
+	if i := strings.Index(pkg, " ("); i > 0 {
+		pkg = pkg[:i]
+	}
+	if len(pkg) > 30 {
+		return pkg[:27] + "..."
+	}
+	return pkg
+}
+
+func colorForClassification(c types.Classification) string {
+	switch c {
+	case types.FixableNow:
+		return colorLow
+	case types.BlockedByGo:
+		return colorHigh
+	case types.NotReachable:
+		return colorLow
+	case types.NotGo:
+		return colorMed
+	case types.Misassigned:
+		return colorNull
+	default:
+		return colorString
+	}
+}
+
+func colorForPriority(p types.Priority) string {
+	switch p {
+	case types.PriorityCritical:
+		return colorCrit
+	case types.PriorityHigh:
+		return colorHigh
+	case types.PriorityMedium:
+		return colorMed
+	case types.PriorityLow:
+		return colorLow
+	default:
+		return colorNull
+	}
+}
+
 func init() {
 	scanCmd.Flags().StringVar(&scanComponent, "component", "", "Component name (e.g., FAR, SNR, NHC, NMO, MDR)")
 	scanCmd.Flags().StringVar(&scanJQL, "jql", "", "Custom JQL query")
@@ -176,5 +324,6 @@ func init() {
 	scanCmd.Flags().StringVar(&scanSummaryFile, "summary-file", "", "Write aggregate summary to file")
 	scanCmd.Flags().StringVar(&scanRepoPath, "repo-path", "", "Path to operator repo (auto-detected from Jira component if omitted)")
 	scanCmd.Flags().BoolVar(&scanIncludeClosed, "include-closed", false, "Include closed tickets (historical reference)")
+	scanCmd.Flags().BoolVar(&scanShort, "short", false, "Print compact summary table instead of full JSON")
 	rootCmd.AddCommand(scanCmd)
 }
