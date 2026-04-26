@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -38,17 +39,21 @@ const (
 )
 
 func printJSON(v interface{}) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
 		return err
 	}
+	data := strings.TrimSuffix(buf.String(), "\n")
 
 	if !forceColor && !term.IsTerminal(int(os.Stdout.Fd())) {
-		fmt.Println(string(data))
+		fmt.Println(data)
 		return nil
 	}
 
-	fmt.Println(colorizeJSON(string(data)))
+	fmt.Println(colorizeJSON(data))
 	return nil
 }
 
