@@ -4,27 +4,29 @@ import (
 	"testing"
 )
 
-func TestDownstreamBranch(t *testing.T) {
+func TestDownstreamBranches(t *testing.T) {
 	tests := []struct {
 		operator string
 		version  string
-		expected string
+		expected []string
 	}{
-		{"fence-agents-remediation", "0.8", "far-0-8"},
-		{"fence-agents-remediation", "0.4", "far-0-4"},
-		{"self-node-remediation", "0.10", "snr-0-10"},
-		{"node-healthcheck-controller", "0.9", "nhc-0-9"},
-		{"node-maintenance-operator", "5.4", "nmo-5-4"},
-		{"machine-deletion-remediation", "0.4", "mdr-0-4"},
-		{"fence-agents-remediation", "", "main"},
-		{"unknown-operator", "1.0", "main"},
+		{"fence-agents-remediation", "0.8", []string{"far-0-8", "rhwa-far-0.8-rhel-8", "rhwa-far-0.8-rhel-9"}},
+		{"fence-agents-remediation", "0.4", []string{"far-0-4", "rhwa-far-0.4-rhel-8", "rhwa-far-0.4-rhel-9"}},
+		{"self-node-remediation", "0.10", []string{"snr-0-10", "rhwa-snr-0.10-rhel-8", "rhwa-snr-0.10-rhel-9"}},
+		{"fence-agents-remediation", "", []string{"main"}},
+		{"unknown-operator", "1.0", []string{"main"}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.operator+"/"+tc.version, func(t *testing.T) {
-			got := downstreamBranch(tc.operator, tc.version)
-			if got != tc.expected {
-				t.Errorf("downstreamBranch(%q, %q) = %q, want %q", tc.operator, tc.version, got, tc.expected)
+			got := downstreamBranches(tc.operator, tc.version)
+			if len(got) != len(tc.expected) {
+				t.Fatalf("downstreamBranches(%q, %q) returned %d branches, want %d: %v", tc.operator, tc.version, len(got), len(tc.expected), got)
+			}
+			for i := range got {
+				if got[i] != tc.expected[i] {
+					t.Errorf("branch[%d] = %q, want %q", i, got[i], tc.expected[i])
+				}
 			}
 		})
 	}

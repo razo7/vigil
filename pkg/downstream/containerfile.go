@@ -30,17 +30,20 @@ var operatorShortNames = map[string]string{
 	"machine-deletion-remediation": "mdr",
 }
 
-func downstreamBranch(operatorName, operatorVersion string) string {
+func downstreamBranches(operatorName, operatorVersion string) []string {
 	if operatorVersion == "" {
-		return "main"
+		return []string{"main"}
 	}
 	short, ok := operatorShortNames[operatorName]
 	if !ok {
-		return "main"
+		return []string{"main"}
 	}
-	// e.g., "0.8" → "far-0-8"
 	ver := strings.ReplaceAll(operatorVersion, ".", "-")
-	return fmt.Sprintf("%s-%s", short, ver)
+	return []string{
+		fmt.Sprintf("%s-%s", short, ver),                            // e.g., "far-0-8"
+		fmt.Sprintf("rhwa-%s-%s-rhel-8", short, operatorVersion),    // e.g., "rhwa-far-0.4-rhel-8"
+		fmt.Sprintf("rhwa-%s-%s-rhel-9", short, operatorVersion),    // e.g., "rhwa-far-0.8-rhel-9"
+	}
 }
 
 func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo, error) {
@@ -92,10 +95,19 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 }
 
 // FetchGoVersionForOperator derives the downstream branch from operator version
-// and fetches the Go version from the Containerfile.
+// and fetches the Go version from the Containerfile, trying multiple branch
+// naming conventions (e.g., far-0-8, rhwa-far-0.4-rhel-8).
 func FetchGoVersionForOperator(operatorName, imageName, operatorVersion string) (*ContainerfileInfo, error) {
-	branch := downstreamBranch(operatorName, operatorVersion)
-	return FetchGoVersion(operatorName, imageName, branch)
+	branches := downstreamBranches(operatorName, operatorVersion)
+	var lastErr error
+	for _, branch := range branches {
+		info, err := FetchGoVersion(operatorName, imageName, branch)
+		if err == nil {
+			return info, nil
+		}
+		lastErr = err
+	}
+	return nil, fmt.Errorf("tried branches %v: %w", branches, lastErr)
 }
 
 func fetchFileFromGitLab(host, token, projectPath, filePath, ref string) (string, error) {
