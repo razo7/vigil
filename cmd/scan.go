@@ -197,6 +197,7 @@ func printScanTable(results []*types.Result, errors []string) {
 	counts := map[types.Classification]int{}
 	for _, r := range results {
 		ticket := extractTicketID(r.Source.TicketID)
+		ticketURL := extractTicketURL(r.Source.TicketID)
 		version := extractVersion(r.Source.AffectedOperatorVersion)
 		status := shortStatus(r.Source.Status, r.Source.Resolution)
 		class := string(r.Recommendation.Classification)
@@ -208,11 +209,12 @@ func printScanTable(results []*types.Result, errors []string) {
 		counts[r.Recommendation.Classification]++
 
 		if isTTY {
+			ticketDisplay := termLink(fmt.Sprintf("%-18s", ticket), ticketURL)
 			classColor := colorForClassification(r.Recommendation.Classification)
 			prioColor := colorForPriority(r.Recommendation.Priority)
 			statusColor := colorForStatus(r.Source.Status)
-			fmt.Printf("%-18s %-8s %s%-18s%s %s%-16s%s %s%-14s%s %5.1f %-14s %s\n",
-				ticket, version,
+			fmt.Printf("%s %-8s %s%-18s%s %s%-16s%s %s%-14s%s %5.1f %-14s %s\n",
+				ticketDisplay, version,
 				statusColor, status, colorReset,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
@@ -256,6 +258,22 @@ func extractTicketID(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+func extractTicketURL(s string) string {
+	if start := strings.Index(s, "("); start >= 0 {
+		if end := strings.Index(s[start:], ")"); end >= 0 {
+			return s[start+1 : start+end]
+		}
+	}
+	return ""
+}
+
+func termLink(text, url string) string {
+	if url == "" {
+		return text
+	}
+	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, text)
 }
 
 func extractVersion(s string) string {
