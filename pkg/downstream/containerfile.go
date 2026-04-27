@@ -81,14 +81,17 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 		ref = "main"
 	}
 
-	distgitName := glProject + "-operator"
-	if strings.HasSuffix(glProject, "-operator") {
-		distgitName = glProject
-	}
 	candidates := []string{
 		fmt.Sprintf("Containerfile.%s", glProject),
 		"Containerfile.manager",
-		fmt.Sprintf("distgit/containers/%s/Dockerfile.in", distgitName),
+	}
+	if strings.HasSuffix(glProject, "-operator") {
+		candidates = append(candidates,
+			fmt.Sprintf("distgit/containers/%s/Dockerfile.in", glProject))
+	} else {
+		candidates = append(candidates,
+			fmt.Sprintf("distgit/containers/%s/Dockerfile.in", glProject),
+			fmt.Sprintf("distgit/containers/%s-operator/Dockerfile.in", glProject))
 	}
 
 	var lastErr error
