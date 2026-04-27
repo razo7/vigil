@@ -602,15 +602,22 @@ func formatCVEAliases(aliases []string, maxWidth int) string {
 		return "N/A"
 	}
 	first := aliases[0]
+	if maxWidth <= 0 {
+		if len(aliases) == 1 {
+			return first
+		}
+		return fmt.Sprintf("%s+%d", first, len(aliases)-1)
+	}
 	if len(aliases) == 1 {
-		if len(first) > maxWidth {
+		if len(first) > maxWidth && maxWidth > 3 {
 			return first[:maxWidth-3] + "..."
 		}
 		return first
 	}
 	suffix := fmt.Sprintf("+%d", len(aliases)-1)
-	if len(first)+len(suffix) > maxWidth {
-		return first[:maxWidth-len(suffix)-3] + "..." + suffix
+	avail := maxWidth - len(suffix)
+	if len(first) > avail && avail > 3 {
+		return first[:avail-3] + "..." + suffix
 	}
 	return first + suffix
 }
