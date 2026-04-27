@@ -1,9 +1,11 @@
 package discover
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -114,6 +116,12 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 		classification, priority, _ := classify.Classify(input)
 		dv.Classification = classification
 		dv.Priority = priority
+
+		if dv.Reachability == "PACKAGE-LEVEL" && entry.Package != "" {
+			if chain := runGoModWhy(repoPath, entry.Package); chain != "" {
+				dv.ImportChain = chain
+			}
+		}
 
 		vulns = append(vulns, dv)
 	}
@@ -281,4 +289,28 @@ func MatchedCVEIDs(result *types.DiscoverResult) map[string]string {
 		}
 	}
 	return m
+}
+
+func runGoModWhy(repoPath, pkg string) string {
+	cmd := exec.Command("go", "mod", "why", "-m", pkg)
+	cmd.Dir = repoPath
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	var chain []string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "(") {
+			continue
+		}
+		chain = append(chain, line)
+	}
+	if len(chain) == 0 {
+		return ""
+	}
+	return strings.Join(chain, " → ")
 }

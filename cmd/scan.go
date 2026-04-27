@@ -344,13 +344,17 @@ type combinedRow struct {
 	cveURL         string
 	version        string
 	lang           string
+	langSrc        string
 	status         string
 	rawStatus      string
 	classification types.Classification
 	priority       types.Priority
 	pkg            string
+	pkgSrc         string
 	cvss           float64
 	reachability   string
+	callPaths      []string
+	importChain    string
 }
 
 func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult) []combinedRow {
@@ -370,6 +374,18 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 		if discCVEs[cveID] {
 			src = "Both"
 		}
+		langSrc := "jira"
+		pkgSrc := "jira"
+		if src == "Both" {
+			langSrc = "gvc"
+			pkgSrc = "gvc"
+		}
+		var callPaths []string
+		if ba := r.Analysis.ReleaseBranch; ba != nil {
+			callPaths = ba.CallPaths
+		} else if fu := r.Analysis.FixUpstream; fu != nil {
+			callPaths = fu.CallPaths
+		}
 		rows = append(rows, combinedRow{
 			src:            src,
 			ticket:         extractTicketID(r.Source.TicketID),
@@ -378,30 +394,36 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			cveURL:         extractCVEURL(r.Vulnerability.CVEID),
 			version:        extractVersion(r.Source.AffectedOperatorVersion),
 			lang:           shortLanguage(r.Vulnerability.Language),
+			langSrc:        langSrc,
 			status:         shortStatus(r.Source.Status, r.Source.Resolution),
 			rawStatus:      r.Source.Status,
 			classification: r.Recommendation.Classification,
 			priority:       r.Recommendation.Priority,
 			pkg:            shortPackage(r.Vulnerability.Package),
+			pkgSrc:         pkgSrc,
 			cvss:           r.Vulnerability.Severity,
 			reachability:   shortReachability(r),
+			callPaths:      callPaths,
 		})
 	}
 	for _, v := range gaps {
-		ticket := "-- none --"
 		rows = append(rows, combinedRow{
 			src:            "Scan",
-			ticket:         ticket,
+			ticket:         "-- none --",
 			cveID:          formatCVEAliases(v.CVEIDs, 16),
 			version:        "",
 			lang:           "Go",
+			langSrc:        "gvc",
 			status:         "",
 			rawStatus:      "",
 			classification: v.Classification,
 			priority:       v.Priority,
 			pkg:            shortPackage(v.Package),
+			pkgSrc:         "gvc",
 			cvss:           v.Severity,
 			reachability:   v.Reachability,
+			callPaths:      v.CallPaths,
+			importChain:    v.ImportChain,
 		})
 	}
 
@@ -413,8 +435,8 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 	rows := buildCombinedRows(results, gaps, disc)
 
-	headerFmt := "%-5s %-18s %-16s %-8s %-6s %-20s %-16s %-14s %-22s %5s %-14s\n"
-	lineWidth := 163
+	headerFmt := "%-5s %-18s %-16s %-8s %-7s %-20s %-16s %-14s %-24s %5s %s\n"
+	lineWidth := 176
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
@@ -432,6 +454,26 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		priority := shortPriority(row.priority)
 		counts[row.classification]++
 
+		langDisplay := row.lang
+		if row.langSrc != "" {
+			langDisplay = fmt.Sprintf("%s(%s)", row.lang, row.langSrc)
+		}
+		pkgDisplay := row.pkg
+		if row.pkgSrc != "" && row.pkg != "" {
+			pkgDisplay = fmt.Sprintf("%s(%s)", row.pkg, row.pkgSrc)
+		}
+		reachDisplay := row.reachability
+		switch {
+		case row.reachability == "MODULE-LEVEL":
+			reachDisplay = "MODULE-LEVEL (go.mod only)"
+		case row.reachability == "PACKAGE-LEVEL" && row.importChain != "":
+			reachDisplay = fmt.Sprintf("PACKAGE-LEVEL (%s)", row.importChain)
+		default:
+			if ep := entryPointFile(row.callPaths); ep != "" {
+				reachDisplay = fmt.Sprintf("%s (%s)", row.reachability, ep)
+			}
+		}
+
 		if isTTY {
 			ticketDisplay := termLink(fmt.Sprintf("%-18s", row.ticket), row.ticketURL)
 			cveDisplay := termLink(fmt.Sprintf("%-16s", row.cveID), row.cveURL)
@@ -439,16 +481,16 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			prioColor := colorForPriority(row.priority)
 			statusColor := colorForStatus(row.rawStatus)
 			srcColor := colorForSource(row.src)
-			fmt.Printf("%s%-5s%s %s %s %-8s %-6s %s%-20s%s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
+			fmt.Printf("%s%-5s%s %s %s %-8s %-7s %s%-20s%s %s%-16s%s %s%-14s%s %-24s %5.1f %s\n",
 				srcColor, row.src, colorReset,
-				ticketDisplay, cveDisplay, row.version, row.lang,
+				ticketDisplay, cveDisplay, row.version, langDisplay,
 				statusColor, row.status, colorReset,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
-				row.pkg, row.cvss, row.reachability)
+				pkgDisplay, row.cvss, reachDisplay)
 		} else {
-			fmt.Printf("%-5s %-18s %-16s %-8s %-6s %-20s %-16s %-14s %-22s %5.1f %-14s\n",
-				row.src, row.ticket, row.cveID, row.version, row.lang, row.status, class, priority, row.pkg, row.cvss, row.reachability)
+			fmt.Printf("%-5s %-18s %-16s %-8s %-7s %-20s %-16s %-14s %-24s %5.1f %s\n",
+				row.src, row.ticket, row.cveID, row.version, langDisplay, row.status, class, priority, pkgDisplay, row.cvss, reachDisplay)
 		}
 	}
 
@@ -697,6 +739,39 @@ func firstWord(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+func entryPointFile(callPaths []string) string {
+	if len(callPaths) == 0 {
+		return ""
+	}
+	parts := strings.Split(callPaths[0], " → ")
+	for i := len(parts) - 1; i >= 0; i-- {
+		start := strings.LastIndex(parts[i], "(")
+		end := strings.LastIndex(parts[i], ")")
+		if start < 0 || end <= start {
+			continue
+		}
+		filename := parts[i][start+1 : end]
+		if strings.Contains(filename, "/") {
+			base := filename[strings.LastIndex(filename, "/")+1:]
+			if !strings.HasSuffix(base, ".go") {
+				continue
+			}
+		}
+		if strings.HasPrefix(filename, "net/") ||
+			strings.HasPrefix(filename, "crypto/") ||
+			strings.HasPrefix(filename, "internal/") ||
+			strings.HasPrefix(filename, "encoding/") ||
+			strings.HasPrefix(filename, "archive/") ||
+			strings.HasPrefix(filename, "go/") ||
+			strings.HasPrefix(filename, "golang.org/") ||
+			strings.Contains(filename, "/vendor/") {
+			continue
+		}
+		return filename
+	}
+	return ""
 }
 
 func shortPackage(pkg string) string {
