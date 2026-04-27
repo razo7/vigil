@@ -34,7 +34,8 @@ var componentJQLMap = map[string]string{
 	"nhc": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Healthcheck") AND status not in (Closed) ORDER BY created DESC`,
 	"nmo": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Maintenance Operator") AND status not in (Closed) ORDER BY created DESC`,
 	"mdr": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Machine Deletion Remediation") AND status not in (Closed) ORDER BY created DESC`,
-	"sbr": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Storage-based Remediation") AND status not in (Closed) ORDER BY created DESC`,
+	"sbr":         `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Storage-based Remediation") AND status not in (Closed) ORDER BY created DESC`,
+	"nhc-console": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Remediation Console") AND status not in (Closed) ORDER BY created DESC`,
 }
 
 var scanCmd = &cobra.Command{

@@ -29,6 +29,7 @@ var operatorShortNames = map[string]string{
 	"node-maintenance-operator":    "nmo",
 	"machine-deletion-remediation": "mdr",
 	"storage-based-remediation":    "sbr",
+	"node-remediation-console":     "nhc-console",
 }
 
 func downstreamBranches(operatorName, operatorVersion string) []string {

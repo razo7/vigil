@@ -30,7 +30,8 @@ var componentFullName = map[string]string{
 	"nhc": "Node Healthcheck",
 	"nmo": "Node Maintenance Operator",
 	"mdr": "Machine Deletion Remediation",
-	"sbr": "Storage-based Remediation",
+	"sbr":         "Storage-based Remediation",
+	"nhc-console": "Node Remediation Console",
 }
 
 func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {

@@ -444,6 +444,7 @@ var operatorMap = map[string]operatorInfo{
 	"node maintenance operator":    {Name: "node-maintenance-operator", RepoURL: "https://github.com/medik8s/node-maintenance-operator.git"},
 	"machine deletion remediation": {Name: "machine-deletion-remediation", RepoURL: "https://github.com/medik8s/machine-deletion-remediation.git"},
 	"storage-based remediation":    {Name: "storage-based-remediation", RepoURL: "https://github.com/medik8s/storage-based-remediation.git"},
+	"node remediation console":     {Name: "node-remediation-console", RepoURL: "https://github.com/medik8s/node-remediation-console.git"},
 }
 
 func deriveOperatorName(component string) string {

@@ -54,7 +54,7 @@ var operatorMappings = map[string][]OperatorOCPMapping{
 		{OperatorVersion: "0.11", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
 		{OperatorVersion: "0.12", OCPVersions: []string{"4.21"}},
 	},
-	"node-healthcheck-controller": {
+	"node-healthcheck-operator": {
 		{OperatorVersion: "0.4", OCPVersions: []string{"4.12"}},
 		{OperatorVersion: "0.6", OCPVersions: []string{"4.14"}},
 		{OperatorVersion: "0.8", OCPVersions: []string{"4.16"}},
