@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/razo7/vigil/pkg/assess"
@@ -329,9 +330,24 @@ func printDiscoverTable(disc *types.DiscoverResult) {
 		disc.TotalVulns, disc.WithTicket, disc.NoTicket)
 }
 
-func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, errors []string) {
-	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
+type combinedRow struct {
+	src            string
+	ticket         string
+	ticketURL      string
+	cveID          string
+	cveURL         string
+	version        string
+	lang           string
+	status         string
+	rawStatus      string
+	classification types.Classification
+	priority       types.Priority
+	pkg            string
+	cvss           float64
+	reachability   string
+}
 
+func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult) []combinedRow {
 	discCVEs := make(map[string]bool)
 	if disc != nil {
 		for _, v := range disc.Vulns {
@@ -340,6 +356,56 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			}
 		}
 	}
+
+	var rows []combinedRow
+	for _, r := range results {
+		cveID := shortCVEID(r.Vulnerability.CVEID)
+		src := "Jira"
+		if discCVEs[cveID] {
+			src = "Both"
+		}
+		rows = append(rows, combinedRow{
+			src:            src,
+			ticket:         extractTicketID(r.Source.TicketID),
+			ticketURL:      extractTicketURL(r.Source.TicketID),
+			cveID:          cveID,
+			cveURL:         extractCVEURL(r.Vulnerability.CVEID),
+			version:        extractVersion(r.Source.AffectedOperatorVersion),
+			lang:           shortLanguage(r.Vulnerability.Language),
+			status:         shortStatus(r.Source.Status, r.Source.Resolution),
+			rawStatus:      r.Source.Status,
+			classification: r.Recommendation.Classification,
+			priority:       r.Recommendation.Priority,
+			pkg:            shortPackage(r.Vulnerability.Package),
+			cvss:           r.Vulnerability.Severity,
+			reachability:   shortReachability(r),
+		})
+	}
+	for _, v := range gaps {
+		ticket := "-- none --"
+		rows = append(rows, combinedRow{
+			src:            "Scan",
+			ticket:         ticket,
+			cveID:          formatCVEAliases(v.CVEIDs, 16),
+			version:        "",
+			lang:           "Go",
+			status:         "",
+			rawStatus:      "",
+			classification: v.Classification,
+			priority:       v.Priority,
+			pkg:            shortPackage(v.Package),
+			cvss:           v.Severity,
+			reachability:   v.Reachability,
+		})
+	}
+
+	sortCombinedRows(rows)
+	return rows
+}
+
+func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, errors []string) {
+	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
+	rows := buildCombinedRows(results, gaps, disc)
 
 	headerFmt := "%-5s %-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5s %-14s\n"
 	lineWidth := 161
@@ -355,69 +421,28 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	}
 
 	counts := map[types.Classification]int{}
-	for _, r := range results {
-		ticket := extractTicketID(r.Source.TicketID)
-		ticketURL := extractTicketURL(r.Source.TicketID)
-		cveID := shortCVEID(r.Vulnerability.CVEID)
-		version := extractVersion(r.Source.AffectedOperatorVersion)
-		lang := shortLanguage(r.Vulnerability.Language)
-		status := shortStatus(r.Source.Status, r.Source.Resolution)
-		class := string(r.Recommendation.Classification)
-		priority := shortPriority(r.Recommendation.Priority)
-		cvss := r.Vulnerability.Severity
-		reach := shortReachability(r)
-		pkg := shortPackage(r.Vulnerability.Package)
-
-		src := "Jira"
-		if discCVEs[cveID] {
-			src = "Both"
-		}
-
-		counts[r.Recommendation.Classification]++
+	for _, row := range rows {
+		class := string(row.classification)
+		priority := shortPriority(row.priority)
+		counts[row.classification]++
 
 		if isTTY {
-			ticketDisplay := termLink(fmt.Sprintf("%-18s", ticket), ticketURL)
-			cveDisplay := termLink(fmt.Sprintf("%-16s", cveID), extractCVEURL(r.Vulnerability.CVEID))
-			classColor := colorForClassification(r.Recommendation.Classification)
-			prioColor := colorForPriority(r.Recommendation.Priority)
-			statusColor := colorForStatus(r.Source.Status)
-			srcColor := colorForSource(src)
+			ticketDisplay := termLink(fmt.Sprintf("%-18s", row.ticket), row.ticketURL)
+			cveDisplay := termLink(fmt.Sprintf("%-16s", row.cveID), row.cveURL)
+			classColor := colorForClassification(row.classification)
+			prioColor := colorForPriority(row.priority)
+			statusColor := colorForStatus(row.rawStatus)
+			srcColor := colorForSource(row.src)
 			fmt.Printf("%s%-5s%s %s %s %-8s %-6s %s%-18s%s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
-				srcColor, src, colorReset,
-				ticketDisplay, cveDisplay, version, lang,
-				statusColor, status, colorReset,
+				srcColor, row.src, colorReset,
+				ticketDisplay, cveDisplay, row.version, row.lang,
+				statusColor, row.status, colorReset,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
-				pkg, cvss, reach)
+				row.pkg, row.cvss, row.reachability)
 		} else {
 			fmt.Printf("%-5s %-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5.1f %-14s\n",
-				src, ticket, cveID, version, lang, status, class, priority, pkg, cvss, reach)
-		}
-	}
-
-	for _, v := range gaps {
-		ticket := "-- none --"
-		cveCol := formatCVEAliases(v.CVEIDs, 16)
-		class := string(v.Classification)
-		priority := shortPriority(v.Priority)
-		pkg := shortPackage(v.Package)
-		src := "Scan"
-
-		counts[v.Classification]++
-
-		if isTTY {
-			classColor := colorForClassification(v.Classification)
-			prioColor := colorForPriority(v.Priority)
-			srcColor := colorForSource(src)
-			fmt.Printf("%s%-5s%s %-18s %-16s %-8s %-6s %-18s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
-				srcColor, src, colorReset,
-				ticket, cveCol, "", "Go", "",
-				classColor, class, colorReset,
-				prioColor, priority, colorReset,
-				pkg, v.Severity, v.Reachability)
-		} else {
-			fmt.Printf("%-5s %-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5.1f %-14s\n",
-				src, ticket, cveCol, "", "Go", "", class, priority, pkg, v.Severity, v.Reachability)
+				row.src, row.ticket, row.cveID, row.version, row.lang, row.status, class, priority, row.pkg, row.cvss, row.reachability)
 		}
 	}
 
@@ -451,6 +476,75 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		summary = append(summary, fmt.Sprintf("%d errors", len(errors)))
 	}
 	fmt.Println(strings.Join(summary, ", "))
+}
+
+func statusRank(status string) int {
+	base := strings.SplitN(status, " (", 2)[0]
+	switch base {
+	case "New", "To Do":
+		return 0
+	case "Backlog":
+		return 1
+	case "In Progress":
+		return 2
+	case "Code Review":
+		return 3
+	case "Review":
+		return 4
+	case "Release Pending":
+		return 5
+	case "Closed":
+		if strings.Contains(status, "Won't Do") || strings.Contains(status, "Won't Fix") {
+			return 6
+		}
+		if strings.Contains(status, "Not a Bug") {
+			return 7
+		}
+		return 8
+	case "":
+		return 9
+	default:
+		return 8
+	}
+}
+
+func sortCombinedRows(rows []combinedRow) {
+	sourceOrder := map[string]int{"Both": 0, "Jira": 1, "Scan": 2}
+	priorityOrder := map[types.Priority]int{
+		types.PriorityCritical:    0,
+		types.PriorityHigh:        1,
+		types.PriorityMedium:      2,
+		types.PriorityLow:         3,
+		types.PriorityManual:      4,
+		types.PriorityMisassigned: 5,
+	}
+	reachOrder := map[string]int{
+		"REACHABLE": 0, "TEST-ONLY": 1, "PACKAGE-LEVEL": 2, "MODULE-LEVEL": 3, "UNKNOWN": 4, "N/A": 5,
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		si := sourceOrder[rows[i].src]
+		sj := sourceOrder[rows[j].src]
+		if si != sj {
+			return si < sj
+		}
+		sti := statusRank(rows[i].status)
+		stj := statusRank(rows[j].status)
+		if sti != stj {
+			return sti < stj
+		}
+		pi := priorityOrder[rows[i].priority]
+		pj := priorityOrder[rows[j].priority]
+		if pi != pj {
+			return pi < pj
+		}
+		ri := reachOrder[rows[i].reachability]
+		rj := reachOrder[rows[j].reachability]
+		if ri != rj {
+			return ri < rj
+		}
+		return rows[i].cvss > rows[j].cvss
+	})
 }
 
 func formatCVEAliases(aliases []string, maxWidth int) string {

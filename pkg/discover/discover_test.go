@@ -74,7 +74,7 @@ func TestSortVulns(t *testing.T) {
 		{VulnID: "crit-test", Priority: types.PriorityCritical, Reachability: "TEST-ONLY", Severity: 8.0},
 	}
 
-	sortVulns(vulns)
+	SortVulns(vulns)
 
 	expected := []string{"crit-reach", "crit-test", "high-pkg", "low-module"}
 	for i, want := range expected {

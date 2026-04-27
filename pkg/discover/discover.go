@@ -117,7 +117,7 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 		vulns = append(vulns, dv)
 	}
 
-	sortVulns(vulns)
+	SortVulns(vulns)
 
 	withTicket := 0
 	for _, v := range vulns {
@@ -195,7 +195,42 @@ func findMatchingTickets(aliases []string, ticketMap map[string]*jira.TicketInfo
 	return matched
 }
 
-func sortVulns(vulns []types.DiscoveredVuln) {
+func ticketStatusRank(status string) int {
+	base := strings.SplitN(status, " (", 2)[0]
+	switch base {
+	case "New", "To Do":
+		return 0
+	case "Backlog":
+		return 1
+	case "In Progress":
+		return 2
+	case "Code Review":
+		return 3
+	case "Review":
+		return 4
+	case "Release Pending":
+		return 5
+	case "Closed":
+		if strings.Contains(status, "Won't Do") || strings.Contains(status, "Won't Fix") {
+			return 6
+		}
+		if strings.Contains(status, "Not a Bug") {
+			return 7
+		}
+		return 8
+	case "":
+		return 9
+	default:
+		return 8
+	}
+}
+
+func SortVulns(vulns []types.DiscoveredVuln) {
+	sourceOrder := map[string]int{
+		"Both": 0,
+		"Jira": 1,
+		"Scan": 2,
+	}
 	priorityOrder := map[types.Priority]int{
 		types.PriorityCritical:    0,
 		types.PriorityHigh:        1,
@@ -213,6 +248,16 @@ func sortVulns(vulns []types.DiscoveredVuln) {
 	}
 
 	sort.Slice(vulns, func(i, j int) bool {
+		si := sourceOrder[vulns[i].Source]
+		sj := sourceOrder[vulns[j].Source]
+		if si != sj {
+			return si < sj
+		}
+		sti := ticketStatusRank(vulns[i].TicketStatus)
+		stj := ticketStatusRank(vulns[j].TicketStatus)
+		if sti != stj {
+			return sti < stj
+		}
 		pi := priorityOrder[vulns[i].Priority]
 		pj := priorityOrder[vulns[j].Priority]
 		if pi != pj {
