@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/vigil /usr/local/bin/vigil
-COPY --from=builder /root/go/bin/govulncheck /usr/local/bin/govulncheck
+COPY --from=builder /go/bin/govulncheck /usr/local/bin/govulncheck
 
 USER nobody
 WORKDIR /workspace
