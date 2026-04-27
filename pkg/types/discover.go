@@ -4,6 +4,7 @@ import "time"
 
 type DiscoveredVuln struct {
 	VulnID         string         `json:"vuln_id"`
+	Description    string         `json:"description,omitempty"`
 	CVEIDs         []string       `json:"cve_ids"`
 	Package        string         `json:"package"`
 	PackageSource  string         `json:"package_source"`

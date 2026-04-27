@@ -69,6 +69,7 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 	for _, entry := range vulnResult.Vulns {
 		dv := types.DiscoveredVuln{
 			VulnID:         entry.ID,
+			Description:    entry.Summary,
 			CVEIDs:         entry.Aliases,
 			Package:        entry.Package,
 			PackageSource:  "govulncheck",

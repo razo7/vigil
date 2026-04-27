@@ -135,7 +135,7 @@ func runCombinedScan() error {
 		fmt.Fprintf(os.Stderr, "[%d/%d] %s ", i+1, len(tickets), ticketLink)
 
 		if ticket.CVEID == "" {
-			fmt.Fprintf(os.Stderr, "no CVE ID (SKIP). Ticket is about: %s\n", ticket.Summary)
+			fmt.Fprintf(os.Stderr, "[%s] no CVE ID (SKIP). Ticket is about: %s\n", ticket.Status, ticket.Summary)
 			continue
 		}
 
@@ -150,7 +150,7 @@ func runCombinedScan() error {
 		}
 
 		results = append(results, result)
-		fmt.Fprintf(os.Stderr, "→ %s (%s)\n", result.Recommendation.Classification, result.Recommendation.Priority)
+		fmt.Fprintf(os.Stderr, "[%s] → %s (%s)\n", ticket.Status, result.Recommendation.Classification, result.Recommendation.Priority)
 
 		if scanJira {
 			if err := report.PostToJira(result); err != nil {
@@ -184,6 +184,12 @@ func runCombinedScan() error {
 			} else {
 				discoveredGaps = append(discoveredGaps, dv)
 			}
+		}
+		fmt.Fprintf(os.Stderr, "Found %d vulnerabilities (%d with ticket, %d new)\n", len(discResult.Vulns), len(discResult.Vulns)-len(discoveredGaps), len(discoveredGaps))
+		for i, dv := range discoveredGaps {
+			cve := formatCVEAliases(dv.CVEIDs, 0)
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s package `%s` → %s (%s): %s\n",
+				i+1, len(discoveredGaps), cve, dv.Package, dv.Classification, dv.Priority, dv.Description)
 		}
 	}
 

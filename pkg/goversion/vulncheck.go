@@ -19,6 +19,7 @@ type AffectedRange struct {
 
 type VulnEntry struct {
 	ID             string
+	Summary        string
 	Aliases        []string
 	Package        string
 	Reachable      bool
@@ -55,6 +56,7 @@ type vulncheckPosition struct {
 
 type vulncheckOSV struct {
 	ID       string              `json:"id"`
+	Summary  string              `json:"summary,omitempty"`
 	Aliases  []string            `json:"aliases,omitempty"`
 	Affected []vulncheckAffected `json:"affected,omitempty"`
 }
@@ -127,6 +129,7 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 
 		if osv, ok := osvMap[id]; ok {
 			entry.Aliases = osv.Aliases
+			entry.Summary = osv.Summary
 		}
 
 		isReachable := false
