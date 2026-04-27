@@ -50,6 +50,7 @@ func downstreamBranches(operatorName, operatorVersion string) []string {
 
 var gitlabProjectNames = map[string]string{
 	"node-healthcheck-operator": "node-healthcheck-controller",
+	"node-maintenance-operator": "node-maintenance",
 }
 
 func gitlabProject(operatorName string) string {
