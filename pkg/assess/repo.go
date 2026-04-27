@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func isGitURL(path string) bool {
+func IsGitURL(path string) bool {
 	if strings.HasPrefix(path, "https://") || strings.HasPrefix(path, "git@") {
 		return true
 	}
@@ -17,8 +17,8 @@ func isGitURL(path string) bool {
 	return false
 }
 
-func resolveRepoPath(path string) (repoPath string, cleanup func(), err error) {
-	if !isGitURL(path) {
+func ResolveRepoPath(path string) (repoPath string, cleanup func(), err error) {
+	if !IsGitURL(path) {
 		return path, nil, nil
 	}
 

@@ -225,6 +225,22 @@ func parseRangeEvents(events []vulncheckEvent) []AffectedRange {
 	return ranges
 }
 
+func ReachabilityLabel(entry *VulnEntry) string {
+	if entry == nil {
+		return "UNKNOWN"
+	}
+	if entry.Reachable && entry.TestOnly {
+		return "TEST-ONLY"
+	}
+	if entry.Reachable {
+		return "REACHABLE"
+	}
+	if !entry.ModuleOnly {
+		return "PACKAGE-LEVEL"
+	}
+	return "MODULE-LEVEL"
+}
+
 func isTestFile(filename string) bool {
 	if filename == "" {
 		return false

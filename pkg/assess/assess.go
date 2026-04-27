@@ -49,13 +49,13 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 
 	repoInput := opts.RepoPath
 	if repoInput == "" {
-		repoInput = deriveRepoURL(ticket.Component)
+		repoInput = DeriveRepoURL(ticket.Component)
 		if repoInput == "" {
 			repoInput = "."
 		}
 	}
 
-	repoPath, repoCleanup, err := resolveRepoPath(repoInput)
+	repoPath, repoCleanup, err := ResolveRepoPath(repoInput)
 	if err != nil {
 		return nil, fmt.Errorf("resolving repo path: %w", err)
 	}
@@ -455,7 +455,7 @@ func deriveOperatorName(component string) string {
 	return strings.ToLower(strings.ReplaceAll(component, " ", "-"))
 }
 
-func deriveRepoURL(component string) string {
+func DeriveRepoURL(component string) string {
 	lower := strings.ToLower(component)
 	for key, info := range operatorMap {
 		if strings.Contains(lower, key) {
@@ -691,7 +691,7 @@ func formatAffectedRanges(ranges []goversion.AffectedRange) string {
 }
 
 func buildGoModLink(component, branch string, line int) string {
-	repoURL := deriveRepoURL(component)
+	repoURL := DeriveRepoURL(component)
 	if repoURL == "" || line == 0 {
 		return ""
 	}

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/razo7/vigil/pkg/assess"
+	"github.com/razo7/vigil/pkg/discover"
 	"github.com/razo7/vigil/pkg/jira"
 	"github.com/razo7/vigil/pkg/report"
 	"github.com/razo7/vigil/pkg/types"
@@ -23,6 +24,7 @@ var (
 	scanRepoPath      string
 	scanIncludeClosed bool
 	scanShort         bool
+	scanDiscover      bool
 )
 
 var componentJQLMap = map[string]string{
@@ -37,106 +39,194 @@ var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Batch assess all CVE tickets for a component",
 	Long: `Find all open CVE tickets for the specified component via JQL query,
-then assess each one.`,
+then assess each one. By default, also runs govulncheck to discover
+vulnerabilities that may not have Jira tickets yet.
+
+Use --discover to run govulncheck-only discovery without Jira assessment.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if scanComponent == "" && scanJQL == "" {
 			return fmt.Errorf("either --component or --jql is required")
 		}
 
-		jql := scanJQL
-		if jql == "" {
-			key := strings.ToLower(scanComponent)
-			var ok bool
-			jql, ok = componentJQLMap[key]
-			if !ok {
-				return fmt.Errorf("unknown component %q; use --jql for custom queries", scanComponent)
-			}
-			if scanIncludeClosed {
-				jql = strings.Replace(jql, " AND status not in (Closed)", "", 1)
-			}
+		if scanDiscover {
+			return runDiscoverOnly()
 		}
 
-		tickets, err := jira.SearchTicketsCLI(jql)
+		return runCombinedScan()
+	},
+}
+
+func runDiscoverOnly() error {
+	if scanRepoPath == "" && scanComponent == "" {
+		return fmt.Errorf("--discover requires --repo-path or --component")
+	}
+
+	ctx := context.Background()
+	discResult, err := discover.Run(ctx, discover.Options{
+		RepoPath:  scanRepoPath,
+		Component: scanComponent,
+		JQL:       scanJQL,
+	})
+	if err != nil {
+		return fmt.Errorf("running discovery: %w", err)
+	}
+
+	if len(discResult.Vulns) == 0 {
+		fmt.Println("No vulnerabilities discovered by govulncheck.")
+		return nil
+	}
+
+	if scanShort {
+		printDiscoverTable(discResult)
+	} else {
+		if err := printJSON(discResult); err != nil {
+			return fmt.Errorf("marshaling output: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func runCombinedScan() error {
+	jql := scanJQL
+	if jql == "" {
+		key := strings.ToLower(scanComponent)
+		var ok bool
+		jql, ok = componentJQLMap[key]
+		if !ok {
+			return fmt.Errorf("unknown component %q; use --jql for custom queries", scanComponent)
+		}
+		if scanIncludeClosed {
+			jql = strings.Replace(jql, " AND status not in (Closed)", "", 1)
+		}
+	}
+
+	tickets, err := jira.SearchTicketsCLI(jql)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: jira CLI search failed (%v), falling back to REST API\n", err)
+		jiraClient, clientErr := jira.NewClient()
+		if clientErr != nil {
+			return fmt.Errorf("creating Jira client: %w", clientErr)
+		}
+		tickets, err = jiraClient.SearchTickets(jql)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "WARNING: jira CLI search failed (%v), falling back to REST API\n", err)
-			jiraClient, clientErr := jira.NewClient()
-			if clientErr != nil {
-				return fmt.Errorf("creating Jira client: %w", clientErr)
-			}
-			tickets, err = jiraClient.SearchTickets(jql)
-			if err != nil {
-				return fmt.Errorf("searching tickets: %w", err)
-			}
+			return fmt.Errorf("searching tickets: %w", err)
+		}
+	}
+
+	if len(tickets) == 0 {
+		fmt.Println("No CVE tickets found.")
+	}
+
+	fmt.Fprintf(os.Stderr, "Found %d CVE tickets. Assessing...\n", len(tickets))
+
+	ctx := context.Background()
+	var results []*types.Result
+	var errors []string
+
+	for i, ticket := range tickets {
+		ticketID := ticket.Key
+		if ticketID == "" {
+			continue
 		}
 
-		if len(tickets) == 0 {
-			fmt.Println("No CVE tickets found.")
-			return nil
+		ticketLink := termLink(ticketID, fmt.Sprintf("https://redhat.atlassian.net/browse/%s", ticketID))
+		fmt.Fprintf(os.Stderr, "[%d/%d] %s ", i+1, len(tickets), ticketLink)
+
+		if ticket.CVEID == "" {
+			fmt.Fprintf(os.Stderr, "no CVE ID (SKIP). Ticket is about: %s\n", ticket.Summary)
+			continue
 		}
 
-		fmt.Fprintf(os.Stderr, "Found %d CVE tickets. Assessing...\n", len(tickets))
+		result, err := assess.Run(ctx, assess.Options{
+			TicketID: ticketID,
+			RepoPath: scanRepoPath,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			errors = append(errors, fmt.Sprintf("%s: %v", ticketID, err))
+			continue
+		}
 
-		ctx := context.Background()
-		var results []*types.Result
-		var errors []string
+		results = append(results, result)
+		fmt.Fprintf(os.Stderr, "→ %s (%s)\n", result.Recommendation.Classification, result.Recommendation.Priority)
 
-		for i, ticket := range tickets {
-			ticketID := ticket.Key
-			if ticketID == "" {
-				continue
+		if scanJira {
+			if err := report.PostToJira(result); err != nil {
+				fmt.Fprintf(os.Stderr, "  WARNING: failed to post Jira comment: %v\n", err)
 			}
+		}
+	}
 
-			ticketLink := termLink(ticketID, fmt.Sprintf("https://redhat.atlassian.net/browse/%s", ticketID))
-			fmt.Fprintf(os.Stderr, "[%d/%d] %s ", i+1, len(tickets), ticketLink)
+	fmt.Fprintf(os.Stderr, "\nRunning govulncheck discovery...\n")
+	discResult, err := discover.Run(ctx, discover.Options{
+		RepoPath:  scanRepoPath,
+		Component: scanComponent,
+		JQL:       jql,
+	})
 
-			if ticket.CVEID == "" {
-				fmt.Fprintf(os.Stderr, "no CVE ID (SKIP). Ticket is about: %s\n", ticket.Summary)
-				continue
-			}
-
-			result, err := assess.Run(ctx, assess.Options{
-				TicketID: ticketID,
-				RepoPath: scanRepoPath,
-			})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
-				errors = append(errors, fmt.Sprintf("%s: %v", ticketID, err))
-				continue
-			}
-
-			results = append(results, result)
-			fmt.Fprintf(os.Stderr, "→ %s (%s)\n", result.Recommendation.Classification, result.Recommendation.Priority)
-
-			if scanJira {
-				if err := report.PostToJira(result); err != nil {
-					fmt.Fprintf(os.Stderr, "  WARNING: failed to post Jira comment: %v\n", err)
+	var discoveredGaps []types.DiscoveredVuln
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: govulncheck discovery failed: %v\n", err)
+	} else {
+		jiraCVEs := buildJiraCVESet(results)
+		for i, dv := range discResult.Vulns {
+			hasJiraMatch := false
+			for _, cveID := range dv.CVEIDs {
+				if jiraCVEs[cveID] {
+					hasJiraMatch = true
+					break
 				}
 			}
-		}
-
-		if scanShort {
-			printScanTable(results, errors)
-		} else {
-			output := map[string]interface{}{
-				"total":    len(tickets),
-				"assessed": len(results),
-				"errors":   len(errors),
-				"results":  results,
-			}
-			if err := printJSON(output); err != nil {
-				return fmt.Errorf("marshaling output: %w", err)
+			if hasJiraMatch {
+				discResult.Vulns[i].Source = "Both"
+			} else {
+				discoveredGaps = append(discoveredGaps, dv)
 			}
 		}
+	}
 
-		if scanSummaryFile != "" {
-			if err := writeBatchSummary(scanSummaryFile, results); err != nil {
-				return fmt.Errorf("writing summary: %w", err)
-			}
-			fmt.Fprintf(os.Stderr, "Summary written to %s\n", scanSummaryFile)
+	if scanShort {
+		printCombinedTable(results, discoveredGaps, discResult, errors)
+	} else {
+		output := map[string]interface{}{
+			"total":      len(tickets),
+			"assessed":   len(results),
+			"errors":     len(errors),
+			"results":    results,
+			"discovered": discoveredGaps,
 		}
+		if err := printJSON(output); err != nil {
+			return fmt.Errorf("marshaling output: %w", err)
+		}
+	}
 
-		return nil
-	},
+	if scanSummaryFile != "" {
+		if err := writeBatchSummary(scanSummaryFile, results); err != nil {
+			return fmt.Errorf("writing summary: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "Summary written to %s\n", scanSummaryFile)
+	}
+
+	return nil
+}
+
+func buildJiraCVESet(results []*types.Result) map[string]bool {
+	m := make(map[string]bool)
+	for _, r := range results {
+		cveID := extractCVEIDOnly(r.Vulnerability.CVEID)
+		if cveID != "" {
+			m[cveID] = true
+		}
+	}
+	return m
+}
+
+func extractCVEIDOnly(s string) string {
+	if i := strings.Index(s, " "); i > 0 {
+		return s[:i]
+	}
+	return s
 }
 
 func writeBatchSummary(path string, results []*types.Result) error {
@@ -183,20 +273,84 @@ func writeBatchSummary(path string, results []*types.Result) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-func printScanTable(results []*types.Result, errors []string) {
+func printDiscoverTable(disc *types.DiscoverResult) {
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 
-	headerFmt := "%-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5s %-14s\n"
-	rowFmt := "%-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5.1f %-14s\n"
-	lineWidth := 155
+	headerFmt := "%-18s %-16s %-16s %-14s %-14s %-22s %5s %-14s\n"
+	lineWidth := 135
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
-			"TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+			"TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PKG-SOURCE", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(headerFmt,
-			"TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+			"TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PKG-SOURCE", "PACKAGE", "CVSS", "REACHABILITY")
+		fmt.Println(strings.Repeat("-", lineWidth))
+	}
+
+	for _, v := range disc.Vulns {
+		ticket := v.TicketID
+		if ticket == "" {
+			ticket = "-- none --"
+		}
+		cveCol := formatCVEAliases(v.CVEIDs, 16)
+		class := string(v.Classification)
+		priority := shortPriority(v.Priority)
+		pkg := shortPackage(v.Package)
+		pkgSrc := v.PackageSource
+
+		if isTTY {
+			classColor := colorForClassification(v.Classification)
+			prioColor := colorForPriority(v.Priority)
+			ticketColor := colorNull
+			if v.HasTicket {
+				ticketColor = colorLow
+			}
+			fmt.Printf("%s%-18s%s %-16s %s%-16s%s %s%-14s%s %-14s %-22s %5.1f %-14s\n",
+				ticketColor, ticket, colorReset,
+				cveCol,
+				classColor, class, colorReset,
+				prioColor, priority, colorReset,
+				pkgSrc, pkg, v.Severity, v.Reachability)
+		} else {
+			fmt.Printf("%-18s %-16s %-16s %-14s %-14s %-22s %5.1f %-14s\n",
+				ticket, cveCol, class, priority, pkgSrc, pkg, v.Severity, v.Reachability)
+		}
+	}
+
+	if isTTY {
+		fmt.Println(strings.Repeat("─", lineWidth))
+	} else {
+		fmt.Println(strings.Repeat("-", lineWidth))
+	}
+
+	fmt.Printf("%d discovered, %d with ticket, %d no ticket\n",
+		disc.TotalVulns, disc.WithTicket, disc.NoTicket)
+}
+
+func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, errors []string) {
+	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
+
+	discCVEs := make(map[string]bool)
+	if disc != nil {
+		for _, v := range disc.Vulns {
+			for _, cveID := range v.CVEIDs {
+				discCVEs[cveID] = true
+			}
+		}
+	}
+
+	headerFmt := "%-5s %-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5s %-14s\n"
+	lineWidth := 161
+
+	if isTTY {
+		fmt.Printf("\033[1m"+headerFmt+colorReset,
+			"SRC", "TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+		fmt.Println(strings.Repeat("─", lineWidth))
+	} else {
+		fmt.Printf(headerFmt,
+			"SRC", "TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
@@ -214,6 +368,11 @@ func printScanTable(results []*types.Result, errors []string) {
 		reach := shortReachability(r)
 		pkg := shortPackage(r.Vulnerability.Package)
 
+		src := "Jira"
+		if discCVEs[cveID] {
+			src = "Both"
+		}
+
 		counts[r.Recommendation.Classification]++
 
 		if isTTY {
@@ -222,14 +381,43 @@ func printScanTable(results []*types.Result, errors []string) {
 			classColor := colorForClassification(r.Recommendation.Classification)
 			prioColor := colorForPriority(r.Recommendation.Priority)
 			statusColor := colorForStatus(r.Source.Status)
-			fmt.Printf("%s %s %-8s %-6s %s%-18s%s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
+			srcColor := colorForSource(src)
+			fmt.Printf("%s%-5s%s %s %s %-8s %-6s %s%-18s%s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
+				srcColor, src, colorReset,
 				ticketDisplay, cveDisplay, version, lang,
 				statusColor, status, colorReset,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
 				pkg, cvss, reach)
 		} else {
-			fmt.Printf(rowFmt, ticket, cveID, version, lang, status, class, priority, pkg, cvss, reach)
+			fmt.Printf("%-5s %-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5.1f %-14s\n",
+				src, ticket, cveID, version, lang, status, class, priority, pkg, cvss, reach)
+		}
+	}
+
+	for _, v := range gaps {
+		ticket := "-- none --"
+		cveCol := formatCVEAliases(v.CVEIDs, 16)
+		class := string(v.Classification)
+		priority := shortPriority(v.Priority)
+		pkg := shortPackage(v.Package)
+		src := "Scan"
+
+		counts[v.Classification]++
+
+		if isTTY {
+			classColor := colorForClassification(v.Classification)
+			prioColor := colorForPriority(v.Priority)
+			srcColor := colorForSource(src)
+			fmt.Printf("%s%-5s%s %-18s %-16s %-8s %-6s %-18s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
+				srcColor, src, colorReset,
+				ticket, cveCol, "", "Go", "",
+				classColor, class, colorReset,
+				prioColor, priority, colorReset,
+				pkg, v.Severity, v.Reachability)
+		} else {
+			fmt.Printf("%-5s %-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5.1f %-14s\n",
+				src, ticket, cveCol, "", "Go", "", class, priority, pkg, v.Severity, v.Reachability)
 		}
 	}
 
@@ -256,10 +444,42 @@ func printScanTable(results []*types.Result, errors []string) {
 	if n := counts[types.Misassigned]; n > 0 {
 		summary = append(summary, fmt.Sprintf("%d misassigned", n))
 	}
+	if len(gaps) > 0 {
+		summary = append(summary, fmt.Sprintf("%d discovered (no ticket)", len(gaps)))
+	}
 	if len(errors) > 0 {
 		summary = append(summary, fmt.Sprintf("%d errors", len(errors)))
 	}
 	fmt.Println(strings.Join(summary, ", "))
+}
+
+func formatCVEAliases(aliases []string, maxWidth int) string {
+	if len(aliases) == 0 {
+		return "N/A"
+	}
+	first := aliases[0]
+	if len(aliases) == 1 {
+		if len(first) > maxWidth {
+			return first[:maxWidth-3] + "..."
+		}
+		return first
+	}
+	suffix := fmt.Sprintf("+%d", len(aliases)-1)
+	if len(first)+len(suffix) > maxWidth {
+		return first[:maxWidth-len(suffix)-3] + "..." + suffix
+	}
+	return first + suffix
+}
+
+func colorForSource(src string) string {
+	switch src {
+	case "Both":
+		return colorCyanBold
+	case "Scan":
+		return colorMed
+	default:
+		return colorString
+	}
 }
 
 func extractTicketID(s string) string {
@@ -429,5 +649,6 @@ func init() {
 	scanCmd.Flags().StringVar(&scanRepoPath, "repo-path", "", "Path to operator repo (auto-detected from Jira component if omitted)")
 	scanCmd.Flags().BoolVar(&scanIncludeClosed, "include-closed", false, "Include closed tickets (historical reference)")
 	scanCmd.Flags().BoolVar(&scanShort, "short", false, "Print compact summary table instead of full JSON")
+	scanCmd.Flags().BoolVar(&scanDiscover, "discover", false, "Run govulncheck-only discovery (skip Jira assessment)")
 	rootCmd.AddCommand(scanCmd)
 }
