@@ -5,6 +5,7 @@ IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 
 COMMIT_COUNT := $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 BUILD_NUMBER := $(shell echo $$(( $(COMMIT_COUNT) / 10 )))
+SHORT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || echo docker)
 
@@ -32,14 +33,12 @@ docker-build: ## Build container image
 	$(CONTAINER_TOOL) build -t $(IMG):latest -f Containerfile .
 
 .PHONY: docker-push
-docker-push: ## Push container image with all tags
+docker-push: ## Push container image with latest and milestone tags
 	$(CONTAINER_TOOL) push $(IMG):latest
-	$(CONTAINER_TOOL) tag $(IMG):latest $(IMG):v$(VERSION)
-	$(CONTAINER_TOOL) push $(IMG):v$(VERSION)
 	@if [ $$(( $(COMMIT_COUNT) % 10 )) -eq 0 ] && [ $(COMMIT_COUNT) -gt 0 ]; then \
-		echo "Build milestone: tagging v$(VERSION)-$(BUILD_NUMBER)"; \
-		$(CONTAINER_TOOL) tag $(IMG):latest $(IMG):v$(VERSION)-$(BUILD_NUMBER); \
-		$(CONTAINER_TOOL) push $(IMG):v$(VERSION)-$(BUILD_NUMBER); \
+		echo "Build milestone: tagging v$(VERSION)-$(BUILD_NUMBER)-$(SHORT_SHA)"; \
+		$(CONTAINER_TOOL) tag $(IMG):latest $(IMG):v$(VERSION)-$(BUILD_NUMBER)-$(SHORT_SHA); \
+		$(CONTAINER_TOOL) push $(IMG):v$(VERSION)-$(BUILD_NUMBER)-$(SHORT_SHA); \
 	fi
 
 .PHONY: container-build-and-push
