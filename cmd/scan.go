@@ -186,17 +186,17 @@ func writeBatchSummary(path string, results []*types.Result) error {
 func printScanTable(results []*types.Result, errors []string) {
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 
-	headerFmt := "%-18s %-16s %-8s %-4s %-18s %-16s %-14s %5s %-14s %s\n"
-	rowFmt := "%-18s %-16s %-8s %-4s %-18s %-16s %-14s %5.1f %-14s %s\n"
-	lineWidth := 140
+	headerFmt := "%-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5s %-14s\n"
+	rowFmt := "%-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5.1f %-14s\n"
+	lineWidth := 155
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
-			"TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
+			"TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(headerFmt,
-			"TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "CVSS", "REACHABILITY", "PACKAGE")
+			"TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
@@ -222,14 +222,14 @@ func printScanTable(results []*types.Result, errors []string) {
 			classColor := colorForClassification(r.Recommendation.Classification)
 			prioColor := colorForPriority(r.Recommendation.Priority)
 			statusColor := colorForStatus(r.Source.Status)
-			fmt.Printf("%s %s %-8s %-4s %s%-18s%s %s%-16s%s %s%-14s%s %5.1f %-14s %s\n",
+			fmt.Printf("%s %s %-8s %-6s %s%-18s%s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
 				ticketDisplay, cveDisplay, version, lang,
 				statusColor, status, colorReset,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
-				cvss, reach, pkg)
+				pkg, cvss, reach)
 		} else {
-			fmt.Printf(rowFmt, ticket, cveID, version, lang, status, class, priority, cvss, reach, pkg)
+			fmt.Printf(rowFmt, ticket, cveID, version, lang, status, class, priority, pkg, cvss, reach)
 		}
 	}
 
@@ -312,13 +312,15 @@ func shortLanguage(lang string) string {
 	case "Ruby":
 		return "Rb"
 	case "Java":
-		return "Jv"
+		return "Java"
 	case "C":
 		return "C"
 	case "PHP":
 		return "PHP"
 	case "Perl":
-		return "Pl"
+		return "Perl"
+	case "SQL":
+		return "SQL"
 	default:
 		return "?"
 	}
@@ -326,7 +328,11 @@ func shortLanguage(lang string) string {
 
 func extractVersion(s string) string {
 	if i := strings.Index(s, ":"); i >= 0 {
-		return s[i+1:]
+		v := s[i+1:]
+		if j := strings.Index(v, " ["); j >= 0 {
+			v = v[:j]
+		}
+		return v
 	}
 	return ""
 }

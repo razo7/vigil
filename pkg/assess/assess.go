@@ -126,9 +126,9 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	if err == nil && cveInfo != nil {
 		severity = cveInfo.Score
 		severityLabel = cveInfo.Severity
-		if !isGoVuln {
-			// already detected as non-Go from ticket summary
-		} else if isNonGoDescription(cveInfo.Description) {
+		if !isGoVuln && isExplicitlyGo(cveInfo.Description) {
+			isGoVuln = true
+		} else if isGoVuln && !isExplicitlyGo(ticket.Summary) && isNonGoDescription(cveInfo.Description) {
 			isGoVuln = false
 		}
 	}
@@ -218,7 +218,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 			CVEID:         cveID,
 			Severity:      severity,
 			SeverityLabel: severityLabel,
-			Language:      detectLanguage(isGoVuln, ticket),
+			Language:      detectLanguage(isGoVuln, ticket, cveDescription(cveInfo)),
 		},
 		Recommendation: types.RecommendationInfo{
 			Classification:  classification,
@@ -311,7 +311,11 @@ func populateVulnMetadata(v *types.VulnInfo, vulnEntry *goversion.VulnEntry, isG
 			}
 		}
 	} else {
-		v.Package = fmt.Sprintf("%s (non-Go)", extractNonGoPackage(ticket))
+		desc := ""
+		if cveInfo != nil {
+			desc = cveInfo.Description
+		}
+		v.Package = fmt.Sprintf("%s (non-Go)", extractNonGoPackage(ticket, desc))
 	}
 
 	if cveInfo != nil {
@@ -461,14 +465,41 @@ func deriveRepoURL(component string) string {
 	return ""
 }
 
+func isExplicitlyGo(text string) bool {
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "golang:") ||
+		strings.Contains(lower, "golang ") ||
+		goPackageInText(lower)
+}
+
+func goPackageInText(lower string) bool {
+	return strings.Contains(lower, "golang.org/") ||
+		strings.Contains(lower, "google.golang.org/") ||
+		stdlibInText(lower)
+}
+
+func stdlibInText(lower string) bool {
+	prefixes := []string{"crypto/", "net/", "encoding/", "archive/", "compress/",
+		"html/", "text/", "math/", "os/", "path/", "go/parser", "database/", "image/"}
+	for _, p := range prefixes {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
 func isGoRelatedCVE(ticket *jira.TicketInfo) bool {
+	if isExplicitlyGo(ticket.Summary) {
+		return true
+	}
 	return !isNonGoDescription(ticket.Summary)
 }
 
 var nonGoIndicators = []string{
 	"python", " pip ", "setuptools", "python-requests", "urllib3",
 	"ply ", "ruby", "perl ", "java ", "node.js", " npm ",
-	"php ", "c library", "glibc", "libxml",
+	"php ", "c library", "glibc", "libxml", "wheel:", "postgres",
 }
 
 func isNonGoDescription(desc string) bool {
@@ -514,45 +545,74 @@ func fixFunctionsInCallPaths(fixFunctions string, callPaths []string) bool {
 	return false
 }
 
-func detectLanguage(isGoVuln bool, ticket *jira.TicketInfo) string {
+func cveDescription(info *cve.CVEInfo) string {
+	if info == nil {
+		return ""
+	}
+	return info.Description
+}
+
+func detectLanguage(isGoVuln bool, ticket *jira.TicketInfo, cveDesc string) string {
 	if isGoVuln {
 		return "Golang"
 	}
-	lower := strings.ToLower(ticket.Summary)
-	switch {
-	case strings.Contains(lower, "python") || strings.Contains(lower, "urllib3") ||
-		strings.Contains(lower, "setuptools") || strings.Contains(lower, " pip "):
-		return "Python"
-	case strings.Contains(lower, "node.js") || strings.Contains(lower, " npm "):
-		return "JavaScript"
-	case strings.Contains(lower, "ruby"):
-		return "Ruby"
-	case strings.Contains(lower, "java "):
-		return "Java"
-	case strings.Contains(lower, "perl "):
-		return "Perl"
-	case strings.Contains(lower, "php "):
-		return "PHP"
-	case strings.Contains(lower, "glibc") || strings.Contains(lower, "c library") ||
-		strings.Contains(lower, "libxml"):
-		return "C"
+	for _, text := range []string{ticket.Summary, cveDesc} {
+		if lang := detectLanguageFromText(text); lang != "" {
+			return lang
+		}
 	}
 	return "Unknown"
 }
 
-func extractNonGoPackage(ticket *jira.TicketInfo) string {
-	lower := strings.ToLower(ticket.Summary)
-	packages := []string{"urllib3", "requests", "setuptools", "pip", "goproxy",
-		"go-yaml", "protobuf", "grpc", "containerd", "runc", "etcd"}
-	for _, pkg := range packages {
-		if strings.Contains(lower, pkg) {
-			return pkg
+var languagePatterns = []struct {
+	lang       string
+	indicators []string
+}{
+	{"Python", []string{"python", "urllib3", "setuptools", " pip ", "wheel:", "pypa/"}},
+	{"JavaScript", []string{"node.js", " npm ", "javascript"}},
+	{"Ruby", []string{"ruby"}},
+	{"Java", []string{"java "}},
+	{"Perl", []string{"perl "}},
+	{"PHP", []string{"php "}},
+	{"C", []string{"glibc", "c library", "libxml", "buffer overflow"}},
+	{"SQL", []string{"postgres", "mysql", "mariadb", "sql injection"}},
+	{"Golang", []string{"golang:", "golang ", "golang.org/"}},
+}
+
+func detectLanguageFromText(text string) string {
+	if text == "" {
+		return ""
+	}
+	lower := strings.ToLower(text)
+	for _, p := range languagePatterns {
+		for _, ind := range p.indicators {
+			if strings.Contains(lower, ind) {
+				return p.lang
+			}
+		}
+	}
+	return ""
+}
+
+func extractNonGoPackage(ticket *jira.TicketInfo, cveDesc string) string {
+	for _, text := range []string{ticket.Summary, cveDesc} {
+		lower := strings.ToLower(text)
+		for _, pkg := range knownNonGoPackages {
+			if strings.Contains(lower, pkg) {
+				return pkg
+			}
 		}
 	}
 	if m := nonGoPkgRe.FindStringSubmatch(ticket.Summary); len(m) == 2 {
 		return strings.TrimSpace(m[1])
 	}
 	return "unknown"
+}
+
+var knownNonGoPackages = []string{
+	"urllib3", "requests", "setuptools", "pip", "wheel",
+	"goproxy", "go-yaml", "protobuf", "grpc",
+	"containerd", "runc", "etcd", "postgres", "mysql",
 }
 
 var nonGoPkgRe = regexp.MustCompile(`(?:container|operator-container):\s+(.+?):\s+`)
