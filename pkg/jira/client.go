@@ -193,6 +193,9 @@ func runJiraCLI(jql string) ([]map[string]interface{}, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if strings.Contains(stderr.String(), "No result found") {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("jira CLI: %w: %s", err, stderr.String())
 	}
 

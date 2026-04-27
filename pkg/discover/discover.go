@@ -27,9 +27,10 @@ type Options struct {
 var componentFullName = map[string]string{
 	"far": "Fence Agents Remediation",
 	"snr": "Self Node Remediation",
-	"nhc": "Node Healthcheck Controller",
+	"nhc": "Node Healthcheck",
 	"nmo": "Node Maintenance Operator",
 	"mdr": "Machine Deletion Remediation",
+	"sbr": "Storage-based Remediation",
 }
 
 func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
