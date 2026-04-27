@@ -39,7 +39,12 @@ docker-push: ## Push container image with latest and milestone tags
 		echo "Build milestone: tagging v$(VERSION)-$(BUILD_NUMBER)-$(SHORT_SHA)"; \
 		$(CONTAINER_TOOL) tag $(IMG):latest $(IMG):v$(VERSION)-$(BUILD_NUMBER)-$(SHORT_SHA); \
 		$(CONTAINER_TOOL) push $(IMG):v$(VERSION)-$(BUILD_NUMBER)-$(SHORT_SHA); \
+		./hack/changelog.sh "$(VERSION)" "$(BUILD_NUMBER)" "$(SHORT_SHA)"; \
 	fi
+
+.PHONY: changelog
+changelog: ## Generate changelog for current build milestone
+	@./hack/changelog.sh "$(VERSION)" "$(BUILD_NUMBER)" "$(SHORT_SHA)"
 
 .PHONY: container-build-and-push
 container-build-and-push: docker-build docker-push ## Build and push container image
