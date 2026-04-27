@@ -48,6 +48,17 @@ func downstreamBranches(operatorName, operatorVersion string) []string {
 	}
 }
 
+var gitlabProjectNames = map[string]string{
+	"node-healthcheck-operator": "node-healthcheck-controller",
+}
+
+func gitlabProject(operatorName string) string {
+	if override, ok := gitlabProjectNames[operatorName]; ok {
+		return override
+	}
+	return operatorName
+}
+
 func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo, error) {
 	token := os.Getenv("GITLAB_TOKEN")
 	if token == "" {
@@ -62,19 +73,20 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 		host = defaultGitLabHost
 	}
 
-	projectPath := fmt.Sprintf("dragonfly/%s", operatorName)
+	glProject := gitlabProject(operatorName)
+	projectPath := fmt.Sprintf("dragonfly/%s", glProject)
 
 	ref := branch
 	if ref == "" {
 		ref = "main"
 	}
 
-	distgitName := operatorName + "-operator"
-	if strings.HasSuffix(operatorName, "-operator") {
-		distgitName = operatorName
+	distgitName := glProject + "-operator"
+	if strings.HasSuffix(glProject, "-operator") {
+		distgitName = glProject
 	}
 	candidates := []string{
-		fmt.Sprintf("Containerfile.%s", operatorName),
+		fmt.Sprintf("Containerfile.%s", glProject),
 		"Containerfile.manager",
 		fmt.Sprintf("distgit/containers/%s/Dockerfile.in", distgitName),
 	}
