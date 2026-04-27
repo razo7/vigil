@@ -29,7 +29,8 @@ mkdir -p docs
 {
     echo "# Vigil v${VERSION}-${BUILD_NUMBER} -- Build Changelog"
     echo ""
-    echo "**Image:** \`quay.io/oraz/vigil:v${VERSION}-${BUILD_NUMBER}-${SHORT_SHA}\`"
+    IMAGE_TAG="v${VERSION}-${BUILD_NUMBER}-${SHORT_SHA}"
+    echo "**Image:** [\`quay.io/oraz/vigil:${IMAGE_TAG}\`](https://quay.io/repository/oraz/vigil?tab=tags&tag=${IMAGE_TAG})"
     echo "**Date:** ${DATE}"
     echo "**Commits:** ${BASE_SHORT}..${SHORT_SHA} (${RANGE_SIZE} commits)"
     echo "**Previous image:** ${PREV_TAG}"
@@ -93,7 +94,7 @@ mkdir -p docs
     echo ""
     echo "| SHA | Subject |"
     echo "|-----|---------|"
-    git log --format="| %h | %s |" "${BASE_SHA}..HEAD"
+    git log --format="| [\`%h\`](https://github.com/razo7/vigil/commit/%h) | %s |" "${BASE_SHA}..HEAD"
     echo ""
 
     # Files changed summary
