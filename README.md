@@ -22,6 +22,8 @@ This matches historical data: 12 of 19 closed FAR tickets were resolved as "Not 
 
 ## How it works
 
+### Single ticket assessment (`vigil assess`)
+
 ```
 vigil assess RHWA-881
        │
@@ -38,6 +40,24 @@ vigil assess RHWA-881
        └─ 11. Output JSON (optionally post to Jira)
 ```
 
+### Batch scan (`vigil scan`)
+
+```
+vigil scan --component FAR --short
+       │
+       ├─ Phase 1: Jira assessment
+       │    └─ For each CVE ticket → run full assess pipeline
+       │
+       ├─ Phase 2: govulncheck discovery
+       │    ├─ Run govulncheck once on the operator repo
+       │    ├─ Cross-reference findings against Jira tickets
+       │    └─ Flag untracked vulnerabilities (SRC=Scan)
+       │
+       └─ Phase 3: Combined output
+            ├─ Merge Jira + discovery results (SRC: Jira/Scan/Both)
+            └─ Sort by source → status → priority → reachability → CVSS
+```
+
 ## Install
 
 ```bash
@@ -50,11 +70,17 @@ go install golang.org/x/vuln/cmd/govulncheck@latest
 ### Container
 
 ```bash
+# Pull pre-built image
+podman pull quay.io/oraz/vigil:latest
+
+# Or build locally
 podman build -t vigil -f Containerfile .
+
+# Run
 podman run --rm -t \
   -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
   -e GITLAB_PRIVATE_TOKEN=$GITLAB_PRIVATE_TOKEN \
-  vigil assess RHWA-881
+  quay.io/oraz/vigil:latest assess RHWA-881
 ```
 
 ## Usage
@@ -91,9 +117,21 @@ vigil scan --component FAR --short --include-closed
 vigil scan --component FAR --jira --summary-file vigil-summary.json
 ```
 
-Supported components: `FAR`, `SNR`, `NHC`, `NMO`, `MDR`.
+Supported components: `FAR`, `SNR`, `NHC`, `NMO`, `MDR`, `SBR`, `NHC-CONSOLE`.
 
 Scan queries both RHWA and ECOPROJECT Jira projects for CVE tickets matching the component.
+
+### Discover-only mode (govulncheck)
+
+```bash
+# Run govulncheck against the component repo without Jira assessment
+vigil scan --component FAR --discover
+
+# With a local repo path
+vigil scan --component FAR --discover --repo-path /path/to/fence-agents-remediation
+```
+
+Discovery mode runs `govulncheck` independently to find vulnerabilities that may not have Jira tickets yet. Results are cross-referenced against existing Jira tickets when a component is specified.
 
 ### Example output
 
@@ -154,16 +192,24 @@ Scan queries both RHWA and ECOPROJECT Jira projects for CVE tickets matching the
 
 ### Short table output (`--short`)
 
+Default mode combines Jira assessment with govulncheck discovery. The `SRC` column shows where each CVE was found, and source annotations on `LANG` and `PACKAGE` indicate the data origin.
+
 ```
-TICKET             VERSION  CLASSIFICATION   PRIORITY        CVSS REACHABILITY   PACKAGE
-─────────────────────────────────────────────────────────────────────────────────────────────────────────
-RHWA-881           v0.4     Blocked by Go    Low              7.5 TEST-ONLY      crypto/tls
-ECOPROJECT-2468    v0.4     Fixable Now      High             5.3 PACKAGE-LEVEL  golang.org/x/net/html
-RHWA-659           v0.6     Not Go           Manual           7.1 N/A            unknown
-RHWA-685           v0.4     Misassigned      Misassigned      7.5 UNKNOWN        net/url
-─────────────────────────────────────────────────────────────────────────────────────────────────────────
-4 assessed, 1 fixable, 1 blocked, 1 not-go, 1 misassigned
+SRC   TICKET             CVE              VERSION  LANG    STATUS               CLASSIFICATION   PRIORITY       PACKAGE                   CVSS REACHABILITY
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Both  RHWA-881           CVE-2026-32283   v0.4     Go(gvc) New                  Blocked by Go    Low            crypto/tls(gvc)            7.5 TEST-ONLY (verify_test.go)
+Both  ECOPROJECT-2468    CVE-2026-25679   v0.4     Go(gvc) In Progress          Fixable Now      Critical       golang.org/x/net/html(gvc) 5.3 PACKAGE-LEVEL (pkg → x/net)
+Jira  RHWA-659           CVE-2026-24049   v0.6     Py(j)   Closed (Not a Bug)   Not Go           Manual         wheel(j)                   7.1 N/A
+Scan  -- none --         CVE-2026-99999            Go(gvc)                      Not Reachable    Low            archive/tar(gvc)           4.2 MODULE-LEVEL (go.mod only)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+4 assessed, 1 fixable, 1 blocked, 1 not-go, 1 discovered (no ticket)
 ```
+
+**SRC column**: `Jira` = Jira ticket only, `Scan` = govulncheck only (no ticket), `Both` = confirmed by both.
+
+**Source annotations**: `(gvc)` = govulncheck, `(j)` = Jira ticket data.
+
+**REACHABILITY proof**: File path for REACHABLE/TEST-ONLY, `go mod why` import chain for PACKAGE-LEVEL, `(go.mod only)` for MODULE-LEVEL.
 
 ## Classification logic
 
@@ -234,9 +280,10 @@ vigil/
     assess/        # Main pipeline orchestration
     classify/      # Deterministic classification + priority logic
     cve/           # CVSS score fetching from cve.org API
+    discover/      # Independent govulncheck CVE discovery
     downstream/    # Downstream Containerfile Go version fetching
     goversion/     # go.mod parsing + govulncheck runner
-    jira/          # Jira REST API v3 client
+    jira/          # Jira REST API v3 + CLI client
     lifecycle/     # OCP version mapping + support phase lookup
     report/        # Report formatting (Jira comment, sanitized summary)
     types/         # Shared types
@@ -244,4 +291,4 @@ vigil/
 
 ## Status
 
-POC — piloted on Fence Agents Remediation (RHWA-922). Designed for all 5 medik8s operators.
+POC — piloted on Fence Agents Remediation (RHWA-922). Supports all 7 medik8s components: FAR, SNR, NHC, NMO, MDR, SBR, and NHC-CONSOLE.
