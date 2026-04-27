@@ -84,7 +84,6 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 
 	candidates := []string{
 		fmt.Sprintf("Containerfile.%s", glProject),
-		"Containerfile.manager",
 	}
 	if strings.HasSuffix(glProject, "-operator") {
 		candidates = append(candidates,
