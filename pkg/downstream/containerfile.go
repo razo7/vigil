@@ -25,9 +25,10 @@ type ContainerfileInfo struct {
 var operatorShortNames = map[string]string{
 	"fence-agents-remediation":     "far",
 	"self-node-remediation":        "snr",
-	"node-healthcheck-controller":  "nhc",
+	"node-healthcheck-operator":    "nhc",
 	"node-maintenance-operator":    "nmo",
 	"machine-deletion-remediation": "mdr",
+	"storage-based-remediation":    "sbr",
 }
 
 func downstreamBranches(operatorName, operatorVersion string) []string {
@@ -73,6 +74,7 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 	}
 	candidates := []string{
 		fmt.Sprintf("Containerfile.%s", operatorName),
+		"Containerfile.manager",
 		fmt.Sprintf("distgit/containers/%s/Dockerfile.in", distgitName),
 	}
 

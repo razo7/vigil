@@ -440,9 +440,10 @@ type operatorInfo struct {
 var operatorMap = map[string]operatorInfo{
 	"fence agents remediation":     {Name: "fence-agents-remediation", RepoURL: "https://github.com/medik8s/fence-agents-remediation.git"},
 	"self node remediation":        {Name: "self-node-remediation", RepoURL: "https://github.com/medik8s/self-node-remediation.git"},
-	"node healthcheck controller":  {Name: "node-healthcheck-controller", RepoURL: "https://github.com/medik8s/node-healthcheck-operator.git"},
+	"node healthcheck":             {Name: "node-healthcheck-operator", RepoURL: "https://github.com/medik8s/node-healthcheck-operator.git"},
 	"node maintenance operator":    {Name: "node-maintenance-operator", RepoURL: "https://github.com/medik8s/node-maintenance-operator.git"},
 	"machine deletion remediation": {Name: "machine-deletion-remediation", RepoURL: "https://github.com/medik8s/machine-deletion-remediation.git"},
+	"storage-based remediation":    {Name: "storage-based-remediation", RepoURL: "https://github.com/medik8s/storage-based-remediation.git"},
 }
 
 func deriveOperatorName(component string) string {
