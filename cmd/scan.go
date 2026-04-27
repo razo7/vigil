@@ -413,8 +413,8 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 	rows := buildCombinedRows(results, gaps, disc)
 
-	headerFmt := "%-5s %-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5s %-14s\n"
-	lineWidth := 161
+	headerFmt := "%-5s %-18s %-16s %-8s %-6s %-20s %-16s %-14s %-22s %5s %-14s\n"
+	lineWidth := 163
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
@@ -439,7 +439,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			prioColor := colorForPriority(row.priority)
 			statusColor := colorForStatus(row.rawStatus)
 			srcColor := colorForSource(row.src)
-			fmt.Printf("%s%-5s%s %s %s %-8s %-6s %s%-18s%s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
+			fmt.Printf("%s%-5s%s %s %s %-8s %-6s %s%-20s%s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
 				srcColor, row.src, colorReset,
 				ticketDisplay, cveDisplay, row.version, row.lang,
 				statusColor, row.status, colorReset,
@@ -447,7 +447,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 				prioColor, priority, colorReset,
 				row.pkg, row.cvss, row.reachability)
 		} else {
-			fmt.Printf("%-5s %-18s %-16s %-8s %-6s %-18s %-16s %-14s %-22s %5.1f %-14s\n",
+			fmt.Printf("%-5s %-18s %-16s %-8s %-6s %-20s %-16s %-14s %-22s %5.1f %-14s\n",
 				row.src, row.ticket, row.cveID, row.version, row.lang, row.status, class, priority, row.pkg, row.cvss, row.reachability)
 		}
 	}
