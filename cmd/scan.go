@@ -499,7 +499,11 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			reachDisplay = fmt.Sprintf("PACKAGE-LEVEL (%s)", row.importChain)
 		default:
 			if ep := entryPointFile(row.callPaths); ep != "" {
-				reachDisplay = fmt.Sprintf("%s (%s)", row.reachability, ep)
+				label := row.reachability
+				if isTestPath(ep) && label == "REACHABLE" {
+					label = "TEST-ONLY"
+				}
+				reachDisplay = fmt.Sprintf("%s (%s)", label, ep)
 			}
 		}
 
@@ -808,6 +812,14 @@ func entryPointFile(callPaths []string) string {
 		return filename
 	}
 	return ""
+}
+
+func isTestPath(path string) bool {
+	return strings.HasSuffix(path, "_test.go") ||
+		strings.HasPrefix(path, "test/") ||
+		strings.Contains(path, "/test/") ||
+		strings.Contains(path, "/tests/") ||
+		strings.Contains(path, "/e2e/")
 }
 
 func shortPackage(pkg string) string {
