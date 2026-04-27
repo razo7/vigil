@@ -82,16 +82,17 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 		ref = "main"
 	}
 
-	candidates := []string{
-		fmt.Sprintf("Containerfile.%s", glProject),
+	withOperator := operatorName + "-operator"
+	if strings.HasSuffix(operatorName, "-operator") {
+		withOperator = operatorName
 	}
-	if strings.HasSuffix(glProject, "-operator") {
-		candidates = append(candidates,
-			fmt.Sprintf("distgit/containers/%s/Dockerfile.in", glProject))
-	} else {
-		candidates = append(candidates,
-			fmt.Sprintf("distgit/containers/%s/Dockerfile.in", glProject),
-			fmt.Sprintf("distgit/containers/%s-operator/Dockerfile.in", glProject))
+	names := uniqueStrings(glProject, operatorName, withOperator)
+	candidates := make([]string, 0, len(names)*2)
+	for _, n := range names {
+		candidates = append(candidates, fmt.Sprintf("Containerfile.%s", n))
+	}
+	for _, n := range names {
+		candidates = append(candidates, fmt.Sprintf("distgit/containers/%s/Dockerfile.in", n))
 	}
 
 	var lastErr error
@@ -182,4 +183,16 @@ func extractGoVersion(containerfileContent string) (string, int) {
 	}
 
 	return "", 0
+}
+
+func uniqueStrings(vals ...string) []string {
+	seen := make(map[string]bool, len(vals))
+	var out []string
+	for _, v := range vals {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out
 }
