@@ -113,6 +113,12 @@ vigil scan --component FAR
 # Include closed tickets for historical reference
 vigil scan --component FAR --short --include-closed
 
+# Filter by time range (last week, 30 days, 1 year, or specific date)
+vigil scan --component FAR --short --since 1w
+vigil scan --component FAR --short --since 30d
+vigil scan --component FAR --short --since 1y
+vigil scan --component FAR --short --include-closed --since 2025-01-01
+
 # Post results to Jira and write aggregate summary
 vigil scan --component FAR --jira --summary-file vigil-summary.json
 ```

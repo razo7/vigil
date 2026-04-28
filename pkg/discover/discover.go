@@ -22,6 +22,7 @@ type Options struct {
 	RepoPath  string
 	Component string
 	JQL       string
+	Since     string
 }
 
 var componentFullName = map[string]string{
@@ -166,6 +167,9 @@ func buildTicketMap(opts Options) map[string]*jira.TicketInfo {
 			fullName,
 		)
 	}
+	if opts.Since != "" {
+		jql = injectSinceClause(jql, opts.Since)
+	}
 
 	tickets, err := jira.SearchTicketsCLI(jql)
 	if err != nil {
@@ -189,6 +193,23 @@ func buildTicketMap(opts Options) map[string]*jira.TicketInfo {
 		}
 	}
 	return m
+}
+
+func injectSinceClause(jql, since string) string {
+	var clause string
+	if strings.ContainsAny(since, "-/") && len(since) > 3 {
+		clause = fmt.Sprintf(` AND created >= "%s"`, since)
+	} else {
+		s := since
+		if !strings.HasPrefix(s, "-") {
+			s = "-" + s
+		}
+		clause = fmt.Sprintf(" AND created >= %s", s)
+	}
+	if idx := strings.Index(strings.ToUpper(jql), "ORDER BY"); idx != -1 {
+		return jql[:idx] + clause + " " + jql[idx:]
+	}
+	return jql + clause
 }
 
 func findMatchingTickets(aliases []string, ticketMap map[string]*jira.TicketInfo) []*jira.TicketInfo {

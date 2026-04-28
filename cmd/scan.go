@@ -26,6 +26,7 @@ var (
 	scanIncludeClosed bool
 	scanShort         bool
 	scanDiscover      bool
+	scanSince         string
 )
 
 var componentJQLMap = map[string]string{
@@ -69,6 +70,7 @@ func runDiscoverOnly() error {
 		RepoPath:  scanRepoPath,
 		Component: scanComponent,
 		JQL:       scanJQL,
+		Since:     scanSince,
 	})
 	if err != nil {
 		return fmt.Errorf("running discovery: %w", err)
@@ -101,6 +103,9 @@ func runCombinedScan() error {
 		}
 		if scanIncludeClosed {
 			jql = strings.Replace(jql, " AND status not in (Closed)", "", 1)
+		}
+		if scanSince != "" {
+			jql = injectSinceClause(jql, scanSince)
 		}
 	}
 
@@ -184,6 +189,7 @@ func runCombinedScan() error {
 		RepoPath:  scanRepoPath,
 		Component: scanComponent,
 		JQL:       jql,
+		Since:     scanSince,
 	})
 
 	var discoveredGaps []types.DiscoveredVuln
@@ -864,6 +870,23 @@ func colorForPriority(p types.Priority) string {
 	}
 }
 
+func injectSinceClause(jql, since string) string {
+	var clause string
+	if strings.ContainsAny(since, "-/") && len(since) > 3 {
+		clause = fmt.Sprintf(` AND created >= "%s"`, since)
+	} else {
+		s := since
+		if !strings.HasPrefix(s, "-") {
+			s = "-" + s
+		}
+		clause = fmt.Sprintf(" AND created >= %s", s)
+	}
+	if idx := strings.Index(strings.ToUpper(jql), "ORDER BY"); idx != -1 {
+		return jql[:idx] + clause + " " + jql[idx:]
+	}
+	return jql + clause
+}
+
 func init() {
 	scanCmd.Flags().StringVar(&scanComponent, "component", "", "Component name (e.g., FAR, SNR, NHC, NMO, MDR)")
 	scanCmd.Flags().StringVar(&scanJQL, "jql", "", "Custom JQL query")
@@ -873,5 +896,6 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncludeClosed, "include-closed", false, "Include closed tickets (historical reference)")
 	scanCmd.Flags().BoolVar(&scanShort, "short", false, "Print compact summary table instead of full JSON")
 	scanCmd.Flags().BoolVar(&scanDiscover, "discover", false, "Run govulncheck-only discovery (skip Jira assessment)")
+	scanCmd.Flags().StringVar(&scanSince, "since", "", "Filter tickets by creation date (e.g., 1w, 30d, 1y, or 2025-01-01)")
 	rootCmd.AddCommand(scanCmd)
 }
