@@ -33,31 +33,16 @@ var operatorShortNames = map[string]string{
 }
 
 func downstreamBranches(operatorName, operatorVersion string) []string {
-	if operatorVersion == "" {
-		return []string{"main"}
-	}
 	short, ok := operatorShortNames[operatorName]
-	if !ok {
-		return []string{"main"}
+	if !ok || operatorVersion == "" {
+		return nil
 	}
 	ver := strings.ReplaceAll(operatorVersion, ".", "-")
 	return []string{
 		fmt.Sprintf("%s-%s", short, ver),                         // e.g., "far-0-8"
-		fmt.Sprintf("rhwa-%s-%s-rhel-8", short, operatorVersion), // e.g., "rhwa-far-0.4-rhel-8"
 		fmt.Sprintf("rhwa-%s-%s-rhel-9", short, operatorVersion), // e.g., "rhwa-far-0.8-rhel-9"
+		fmt.Sprintf("rhwa-%s-%s-rhel-8", short, operatorVersion), // e.g., "rhwa-far-0.4-rhel-8"
 	}
-}
-
-var gitlabProjectNames = map[string]string{
-	"node-healthcheck-operator": "node-healthcheck-controller",
-	"node-maintenance-operator": "node-maintenance",
-}
-
-func gitlabProject(operatorName string) string {
-	if override, ok := gitlabProjectNames[operatorName]; ok {
-		return override
-	}
-	return operatorName
 }
 
 func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo, error) {
@@ -74,30 +59,20 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 		host = defaultGitLabHost
 	}
 
-	glProject := gitlabProject(operatorName)
-	projectPath := fmt.Sprintf("dragonfly/%s", glProject)
+	projectPath := fmt.Sprintf("dragonfly/%s", operatorName)
 
-	ref := branch
-	if ref == "" {
-		ref = "main"
+	candidates := []string{
+		fmt.Sprintf("Containerfile.%s", operatorName),
+		fmt.Sprintf("distgit/containers/%s/Dockerfile.in", operatorName),
 	}
-
-	withOperator := operatorName + "-operator"
-	if strings.HasSuffix(operatorName, "-operator") {
-		withOperator = operatorName
-	}
-	names := uniqueStrings(glProject, operatorName, withOperator)
-	candidates := make([]string, 0, len(names)*2)
-	for _, n := range names {
-		candidates = append(candidates, fmt.Sprintf("Containerfile.%s", n))
-	}
-	for _, n := range names {
-		candidates = append(candidates, fmt.Sprintf("distgit/containers/%s/Dockerfile.in", n))
+	if !strings.HasSuffix(operatorName, "-operator") {
+		candidates = append(candidates,
+			fmt.Sprintf("distgit/containers/%s-operator/Dockerfile.in", operatorName))
 	}
 
 	var lastErr error
 	for _, filePath := range candidates {
-		content, err := fetchFileFromGitLab(host, token, projectPath, filePath, ref)
+		content, err := fetchFileFromGitLab(host, token, projectPath, filePath, branch)
 		if err != nil {
 			lastErr = err
 			continue
@@ -107,21 +82,21 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 		return &ContainerfileInfo{
 			GoVersion:     goVersion,
 			GoVersionLine: goLine,
-			Branch:        ref,
+			Branch:        branch,
 			FilePath:      filePath,
 			ImageName:     imageName,
 		}, nil
 	}
 
 	return nil, fmt.Errorf("no Containerfile found for %s@%s (tried %d paths): %w",
-		operatorName, ref, len(candidates), lastErr)
+		operatorName, branch, len(candidates), lastErr)
 }
 
-// FetchGoVersionForOperator derives the downstream branch from operator version
-// and fetches the Go version from the Containerfile, trying multiple branch
-// naming conventions (e.g., far-0-8, rhwa-far-0.4-rhel-8).
 func FetchGoVersionForOperator(operatorName, imageName, operatorVersion string) (*ContainerfileInfo, error) {
 	branches := downstreamBranches(operatorName, operatorVersion)
+	if len(branches) == 0 {
+		return nil, fmt.Errorf("no downstream branches for %s (unknown short name or no version)", operatorName)
+	}
 	var lastErr error
 	for _, branch := range branches {
 		info, err := FetchGoVersion(operatorName, imageName, branch)
@@ -183,16 +158,4 @@ func extractGoVersion(containerfileContent string) (string, int) {
 	}
 
 	return "", 0
-}
-
-func uniqueStrings(vals ...string) []string {
-	seen := make(map[string]bool, len(vals))
-	var out []string
-	for _, v := range vals {
-		if !seen[v] {
-			seen[v] = true
-			out = append(out, v)
-		}
-	}
-	return out
 }
