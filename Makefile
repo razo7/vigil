@@ -1,6 +1,6 @@
 IMAGE_REGISTRY ?= quay.io/oraz
 IMAGE_NAME ?= vigil
-VERSION ?= 0.0.1
+VERSION ?= 0.0.2
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 
 COMMIT_COUNT := $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
