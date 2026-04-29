@@ -62,7 +62,7 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 	}
 	currentGo := goMod.EffectiveVersion()
 
-	fmt.Fprintf(os.Stderr, "Running govulncheck on %s (Go %s)...\n", repoPath, currentGo)
+	fmt.Fprintf(os.Stderr, "Running govulncheck on %s (go.mod declares Go %s)...\n", repoPath, currentGo)
 	vulnResult, err := goversion.RunGovulncheck(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("running govulncheck: %w", err)

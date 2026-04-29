@@ -295,6 +295,38 @@ vigil/
     types/         # Shared types
 ```
 
+## ARGUS ProdSec Skills Integration
+
+Vigil v0.0.2 integrates with the [ARGUS ProdSec skills repository](https://gitlab.cee.redhat.com/product-security/prodsec-skills/-/tree/main/skills) to ensure fix PRs follow Red Hat enterprise security standards:
+
+| Skill | What it provides |
+|---|---|
+| [vulnerability-management](https://gitlab.cee.redhat.com/product-security/prodsec-skills/-/blob/main/skills/secure_development/supply-chain/vulnerability-management.md) | CVE response timelines (Critical: 30d, Important: 60d, Moderate: 90d) |
+| [go-security](https://gitlab.cee.redhat.com/product-security/prodsec-skills/-/blob/main/skills/secure_development/languages/go-security.md) | Go-specific: govulncheck, dependency pinning, input validation |
+| [operator-security](https://gitlab.cee.redhat.com/product-security/prodsec-skills/-/blob/main/skills/secure_development/kubernetes/operator-security.md) | K8s operator RBAC, container hardening, namespace isolation |
+| [differential-review](https://gitlab.cee.redhat.com/product-security/prodsec-skills/-/blob/main/skills/security_auditing/audit-workflow/differential-review.md) | Security-focused diff review for generated fix patches |
+| [sast-finding-triage](https://gitlab.cee.redhat.com/product-security/prodsec-skills/-/blob/main/skills/secure_development/rh-secure-sdlc/sast/sast-finding-triage.md) | SARIF parsing, true/false positive determination |
+| [supply-chain-risk-auditor](https://gitlab.cee.redhat.com/product-security/prodsec-skills/-/blob/main/skills/secure_development/supply-chain/supply-chain-risk-auditor.md) | Dependency health: maintainer risk, CVE history |
+| [container-hardening](https://gitlab.cee.redhat.com/product-security/prodsec-skills/-/blob/main/skills/secure_development/kubernetes/container-hardening.md) | Container image hardening guidance |
+
 ## Status
 
-POC — piloted on Fence Agents Remediation (RHWA-922). Supports all 7 medik8s components: FAR, SNR, NHC, NMO, MDR, SBR, and NHC-CONSOLE.
+v0.0.1 — piloted on Fence Agents Remediation ([RHWA-922](https://redhat.atlassian.net/browse/RHWA-922)). Supports all 7 medik8s components: FAR, SNR, NHC, NMO, MDR, SBR, and NHC-CONSOLE.
+
+## Roadmap (v0.0.2)
+
+See [docs/design-v0.0.2.md](docs/design-v0.0.2.md) and [docs/plan-v0.0.2.md](docs/plan-v0.0.2.md).
+
+- `vigil fix` — automated fix PRs with 4 Go patching strategies (direct → transitive → replace → major bump)
+- `vigil watch` — monitor blocked CVEs, re-check when downstream Go version updates
+- `check-goversion` — check downstream base image Go version availability
+- Trivy as third detection source alongside Jira + govulncheck
+- Jira bidirectional sync (link PRs, update ticket status)
+- ARGUS ProdSec skills in PR descriptions
+- Claude CVE preprocessor (offline advisory digestion)
+- Intelligent routing (deterministic fix vs AI-assisted workflow)
+
+### v0.0.3 Preview
+
+- Snyk integration ([RHWA-632](https://redhat.atlassian.net/browse/RHWA-632))
+- Agentic mode — detection agent + fix agent running independently
