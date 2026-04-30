@@ -45,7 +45,7 @@ vigil assess RHWA-881
 ### Batch scan (`vigil scan`)
 
 ```
-vigil scan --component FAR --short --trivy
+vigil scan --component FAR --short
        │
        ├─ Phase 1: Jira assessment
        │    └─ For each CVE ticket → run full assess pipeline
@@ -55,7 +55,7 @@ vigil scan --component FAR --short --trivy
        │    ├─ Cross-reference findings against Jira tickets
        │    └─ Flag untracked vulnerabilities (SRC=GVC)
        │
-       ├─ Phase 3: Trivy scan (--trivy)
+       ├─ Phase 3: Trivy scan (enabled by default, --trivy=false to disable)
        │    ├─ Run trivy fs on the operator repo
        │    ├─ Deduplicate against Jira + govulncheck findings
        │    └─ Flag Trivy-only vulnerabilities (SRC=Trivy)
@@ -89,7 +89,7 @@ podman run --rm -t \
   -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
   -e JIRA_EMAIL=user@redhat.com \
   -e GITLAB_PRIVATE_TOKEN=$GITLAB_PRIVATE_TOKEN \
-  quay.io/oraz/vigil:latest scan --component FAR --short --trivy
+  quay.io/oraz/vigil:latest scan --component FAR --short
 ```
 
 The container image includes govulncheck, Trivy, skopeo, and git. Red Hat IT Root CA certificates are embedded at build time for `gitlab.cee.redhat.com` access.
@@ -115,11 +115,11 @@ vigil assess RHWA-881 --jira
 ### Batch scan all tickets for a component
 
 ```bash
-# Short table with all detection sources
-vigil scan --component FAR --short --trivy
+# Short table (Jira + govulncheck + Trivy, all enabled by default)
+vigil scan --component FAR --short
 
 # Full JSON output (detailed per-ticket results)
-vigil scan --component FAR --trivy
+vigil scan --component FAR
 
 # Include closed tickets for historical reference
 vigil scan --component FAR --short --include-closed
