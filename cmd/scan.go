@@ -1028,6 +1028,6 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanShort, "short", false, "Print compact summary table instead of full JSON")
 	scanCmd.Flags().BoolVar(&scanDiscover, "discover", false, "Run govulncheck-only discovery (skip Jira assessment)")
 	scanCmd.Flags().StringVar(&scanSince, "since", "", "Filter tickets by creation date (e.g., 1w, 30d, 1y, or 2025-01-01)")
-	scanCmd.Flags().BoolVar(&scanTrivy, "trivy", false, "Also run Trivy vulnerability scan")
+	scanCmd.Flags().BoolVar(&scanTrivy, "trivy", true, "Run Trivy vulnerability scan (use --trivy=false to disable)")
 	rootCmd.AddCommand(scanCmd)
 }

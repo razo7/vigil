@@ -107,12 +107,19 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 			}
 		}
 
+		fixGoVersion := entry.FixVersion
+		if entry.Module != "" && entry.Module != "stdlib" && entry.FixVersion != "" {
+			if reqGo, err := goversion.FetchModuleGoVersion(entry.Module, entry.FixVersion); err == nil && reqGo != "" {
+				fixGoVersion = reqGo
+			}
+		}
+
 		input := classify.Input{
 			IsGoVuln:       true,
 			IsReachable:    entry.Reachable && !entry.TestOnly,
 			IsPackageLevel: !entry.ModuleOnly && !entry.Reachable,
 			TestOnly:       entry.TestOnly,
-			FixGoVersion:   entry.FixVersion,
+			FixGoVersion:   fixGoVersion,
 			CurrentGo:      currentGo,
 			CVSS:           dv.Severity,
 		}

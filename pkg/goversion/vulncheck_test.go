@@ -71,6 +71,10 @@ func TestParseGovulncheckOutput_MultiLineJSON(t *testing.T) {
 		t.Errorf("expected alias CVE-2026-32283, got %v", vuln.Aliases)
 	}
 
+	if vuln.Module != "stdlib" {
+		t.Errorf("expected module stdlib, got %s", vuln.Module)
+	}
+
 	if vuln.Package != "crypto/tls" {
 		t.Errorf("expected package crypto/tls, got %s", vuln.Package)
 	}
@@ -125,6 +129,10 @@ func TestParseGovulncheckOutput_ModuleLevelOnly(t *testing.T) {
 	}
 
 	vuln := result.Vulns[0]
+
+	if vuln.Module != "golang.org/x/oauth2" {
+		t.Errorf("expected module golang.org/x/oauth2, got %s", vuln.Module)
+	}
 
 	if !vuln.ModuleOnly {
 		t.Error("expected module_only to be true")

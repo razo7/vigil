@@ -138,7 +138,7 @@ func TestClassify_MisassignedBundle(t *testing.T) {
 	}
 }
 
-func TestClassify_MisassignedRHEL8_EOL(t *testing.T) {
+func TestClassify_Misassigned_EOL(t *testing.T) {
 	in := Input{
 		IsGoVuln:       true,
 		ImageName:      "far-rhel8-operator",
@@ -149,10 +149,28 @@ func TestClassify_MisassignedRHEL8_EOL(t *testing.T) {
 
 	class, _, reason := Classify(in)
 	if class != types.Misassigned {
-		t.Errorf("expected misassigned for RHEL8 EOL image, got %s", class)
+		t.Errorf("expected misassigned for EOL operator version, got %s", class)
 	}
 	if reason == "" {
-		t.Error("expected misassignment reason for RHEL8 EOL")
+		t.Error("expected misassignment reason for EOL")
+	}
+}
+
+func TestClassify_RHEL9_EOL_Misassigned(t *testing.T) {
+	in := Input{
+		IsGoVuln:       true,
+		ImageName:      "far-rhel9-operator",
+		OperatorName:   "fence-agents-remediation",
+		AffectsVersion: "0.6.0",
+		SupportPhase:   types.PhaseEOL,
+	}
+
+	class, _, reason := Classify(in)
+	if class != types.Misassigned {
+		t.Errorf("expected misassigned for RHEL9 EOL operator version, got %s", class)
+	}
+	if reason == "" {
+		t.Error("expected misassignment reason for EOL")
 	}
 }
 
@@ -188,6 +206,46 @@ func TestClassify_RHEL8_GA_NotMisassigned(t *testing.T) {
 	class, _, _ := Classify(in)
 	if class == types.Misassigned {
 		t.Errorf("RHEL8 image with GA support should NOT be misassigned, got %s", class)
+	}
+}
+
+func TestClassify_ModuleBlockedByGo(t *testing.T) {
+	// Simulates: golang.org/x/net@v0.40.0 requires go 1.23.0,
+	// but downstream only has go 1.22.4.
+	// FixGoVersion is set to "1.23.0" (the dependency's Go requirement,
+	// resolved via module proxy) not "0.40.0" (the module version).
+	in := Input{
+		IsGoVuln:       true,
+		IsReachable:    true,
+		FixGoVersion:   "1.23.0",
+		CurrentGo:      "1.22.0",
+		DownstreamGo:   "1.22.4",
+		CVSS:           6.5,
+		SupportPhase:   types.PhaseGA,
+	}
+
+	class, _, _ := Classify(in)
+	if class != types.BlockedByGo {
+		t.Errorf("expected blocked-by-go when dependency requires Go 1.23.0 but downstream has 1.22.4, got %s", class)
+	}
+}
+
+func TestClassify_ModuleFixable(t *testing.T) {
+	// Simulates: dependency fix requires go 1.22.0,
+	// downstream has go 1.25.8 — fix is feasible.
+	in := Input{
+		IsGoVuln:       true,
+		IsReachable:    true,
+		FixGoVersion:   "1.22.0",
+		CurrentGo:      "1.25.0",
+		DownstreamGo:   "1.25.8",
+		CVSS:           6.5,
+		SupportPhase:   types.PhaseGA,
+	}
+
+	class, _, _ := Classify(in)
+	if class != types.FixableNow {
+		t.Errorf("expected fixable-now when dependency requires Go 1.22.0 and downstream has 1.25.8, got %s", class)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/razo7/vigil/pkg/classify"
+	"github.com/razo7/vigil/pkg/goversion"
 	"github.com/razo7/vigil/pkg/types"
 )
 
@@ -80,11 +81,18 @@ func ToDiscoveredVulns(report *Report, currentGo string) []types.DiscoveredVuln 
 			isGoVuln := true
 			reachability := "MODULE-LEVEL"
 
+			fixGoVersion := v.FixedVersion
+			if v.PkgName != "" && v.FixedVersion != "" {
+				if reqGo, err := goversion.FetchModuleGoVersion(v.PkgName, v.FixedVersion); err == nil && reqGo != "" {
+					fixGoVersion = reqGo
+				}
+			}
+
 			input := classify.Input{
-				IsGoVuln:    isGoVuln,
-				FixGoVersion: v.FixedVersion,
-				CurrentGo:   currentGo,
-				CVSS:        severity,
+				IsGoVuln:     isGoVuln,
+				FixGoVersion: fixGoVersion,
+				CurrentGo:    currentGo,
+				CVSS:         severity,
 			}
 			classification, priority, _ := classify.Classify(input)
 

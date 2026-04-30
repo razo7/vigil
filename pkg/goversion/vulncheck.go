@@ -21,6 +21,7 @@ type VulnEntry struct {
 	ID             string
 	Summary        string
 	Aliases        []string
+	Module         string
 	Package        string
 	Reachable      bool
 	ModuleOnly     bool
@@ -155,6 +156,9 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 					callParts = append(callParts, name)
 				} else if frame.Package != "" {
 					isPackageLevel = true
+				}
+				if entry.Module == "" && frame.Module != "" {
+					entry.Module = frame.Module
 				}
 				if entry.Package == "" && frame.Package != "" {
 					entry.Package = frame.Package

@@ -165,6 +165,11 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		input.IsReachable = vulnEntry.Reachable
 		input.IsPackageLevel = !vulnEntry.ModuleOnly && !vulnEntry.Reachable
 		input.FixGoVersion = vulnEntry.FixVersion
+		if vulnEntry.Module != "" && vulnEntry.Module != "stdlib" && vulnEntry.FixVersion != "" {
+			if reqGo, err := goversion.FetchModuleGoVersion(vulnEntry.Module, vulnEntry.FixVersion); err == nil && reqGo != "" {
+				input.FixGoVersion = reqGo
+			}
+		}
 		if vulnEntry.Reachable && vulnEntry.TestOnly {
 			input.IsReachable = false
 			input.IsPackageLevel = true
