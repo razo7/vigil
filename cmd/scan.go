@@ -12,6 +12,7 @@ import (
 	"github.com/razo7/vigil/pkg/discover"
 	"github.com/razo7/vigil/pkg/jira"
 	"github.com/razo7/vigil/pkg/report"
+	"github.com/razo7/vigil/pkg/trivy"
 	"github.com/razo7/vigil/pkg/types"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -27,6 +28,7 @@ var (
 	scanShort         bool
 	scanDiscover      bool
 	scanSince         string
+	scanTrivy         bool
 )
 
 var componentJQLMap = map[string]string{
@@ -184,18 +186,37 @@ func runCombinedScan() error {
 		}
 	}
 
+	repoPath := scanRepoPath
+	var repoCleanup func()
+	if repoPath == "" && scanComponent != "" {
+		var resolveErr error
+		repoPath, repoCleanup, resolveErr = discover.ResolveComponentRepo(scanComponent)
+		if resolveErr != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: could not resolve repo for %s: %v\n", scanComponent, resolveErr)
+		}
+		if repoCleanup != nil {
+			defer repoCleanup()
+		}
+	}
+
 	fmt.Fprintf(os.Stderr, "\nRunning govulncheck discovery...\n")
 	discResult, err := discover.Run(ctx, discover.Options{
-		RepoPath:  scanRepoPath,
+		RepoPath:  repoPath,
 		Component: scanComponent,
 		JQL:       jql,
 		Since:     scanSince,
 	})
 
 	var discoveredGaps []types.DiscoveredVuln
+	discCVEs := make(map[string]bool)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: govulncheck discovery failed: %v\n", err)
 	} else {
+		for _, dv := range discResult.Vulns {
+			for _, cveID := range dv.CVEIDs {
+				discCVEs[cveID] = true
+			}
+		}
 		jiraCVEs := buildJiraCVESet(results)
 		for i, dv := range discResult.Vulns {
 			hasJiraMatch := false
@@ -206,7 +227,7 @@ func runCombinedScan() error {
 				}
 			}
 			if hasJiraMatch {
-				discResult.Vulns[i].Source = "Both"
+				discResult.Vulns[i].Source = "Multi"
 			} else {
 				discoveredGaps = append(discoveredGaps, dv)
 			}
@@ -228,8 +249,44 @@ func runCombinedScan() error {
 		}
 	}
 
+	var trivyVulns []types.DiscoveredVuln
+	if scanTrivy {
+		fmt.Fprintf(os.Stderr, "\nRunning Trivy scan...\n")
+		if repoPath != "" {
+			trivyReport, trivyErr := trivy.Run(repoPath)
+			if trivyErr != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: Trivy scan failed: %v\n", trivyErr)
+			} else {
+				goVer := ""
+				if discResult != nil {
+					goVer = discResult.GoVersion
+				}
+				allTrivy := trivy.ToDiscoveredVulns(trivyReport, goVer)
+				jiraCVEs := buildJiraCVESet(results)
+				for _, tv := range allTrivy {
+					isJira := false
+					isGvc := false
+					for _, cveID := range tv.CVEIDs {
+						if jiraCVEs[cveID] {
+							isJira = true
+						}
+						if discCVEs[cveID] {
+							isGvc = true
+						}
+					}
+					if !isJira && !isGvc {
+						trivyVulns = append(trivyVulns, tv)
+					}
+				}
+				fmt.Fprintf(os.Stderr, "Trivy found %d vulnerabilities (%d unique after dedup)\n", len(allTrivy), len(trivyVulns))
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "WARNING: Trivy scan skipped (no repo path available)\n")
+		}
+	}
+
 	if scanShort {
-		printCombinedTable(results, discoveredGaps, discResult, errors)
+		printCombinedTable(results, discoveredGaps, discResult, trivyVulns, errors)
 	} else {
 		output := map[string]interface{}{
 			"total":      len(tickets),
@@ -237,6 +294,7 @@ func runCombinedScan() error {
 			"errors":     len(errors),
 			"results":    results,
 			"discovered": discoveredGaps,
+			"trivy":      trivyVulns,
 		}
 		if err := printJSON(output); err != nil {
 			return fmt.Errorf("marshaling output: %w", err)
@@ -392,7 +450,7 @@ type combinedRow struct {
 	importChain    string
 }
 
-func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult) []combinedRow {
+func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln) []combinedRow {
 	discCVEs := make(map[string]bool)
 	if disc != nil {
 		for _, v := range disc.Vulns {
@@ -401,17 +459,22 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			}
 		}
 	}
+	trivyCVESet := make(map[string]bool)
+	for _, v := range trivyVulns {
+		for _, cveID := range v.CVEIDs {
+			trivyCVESet[cveID] = true
+		}
+	}
 
 	var rows []combinedRow
 	for _, r := range results {
 		cveID := shortCVEID(r.Vulnerability.CVEID)
-		src := "Jira"
-		if discCVEs[cveID] {
-			src = "Both"
-		}
+		inGvc := discCVEs[cveID]
+		inTrivy := trivyCVESet[cveID]
+		src := compositeSource("J", inGvc, inTrivy)
 		langSrc := "jira"
 		pkgSrc := "jira"
-		if src == "Both" {
+		if inGvc {
 			langSrc = "gvc"
 			pkgSrc = "gvc"
 		}
@@ -442,8 +505,15 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 		})
 	}
 	for _, v := range gaps {
+		gapInTrivy := false
+		for _, cveID := range v.CVEIDs {
+			if trivyCVESet[cveID] {
+				gapInTrivy = true
+				break
+			}
+		}
 		rows = append(rows, combinedRow{
-			src:            "Scan",
+			src:            compositeSource("G", false, gapInTrivy),
 			ticket:         "-- none --",
 			cveID:          formatCVEAliases(v.CVEIDs, 16),
 			version:        "",
@@ -461,14 +531,32 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			importChain:    v.ImportChain,
 		})
 	}
+	for _, v := range trivyVulns {
+		rows = append(rows, combinedRow{
+			src:            "Trivy",
+			ticket:         "-- none --",
+			cveID:          formatCVEAliases(v.CVEIDs, 16),
+			version:        "",
+			lang:           "Go",
+			langSrc:        "trivy",
+			status:         "",
+			rawStatus:      "",
+			classification: v.Classification,
+			priority:       v.Priority,
+			pkg:            shortPackage(v.Package),
+			pkgSrc:         "trivy",
+			cvss:           v.Severity,
+			reachability:   v.Reachability,
+		})
+	}
 
 	sortCombinedRows(rows)
 	return rows
 }
 
-func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, errors []string) {
+func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln, errors []string) {
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
-	rows := buildCombinedRows(results, gaps, disc)
+	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
 
 	headerFmt := "%-5s %-18s %-16s %-8s %-7s %-20s %-16s %-14s %-24s %5s %s\n"
 	lineWidth := 176
@@ -559,6 +647,9 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	if len(gaps) > 0 {
 		summary = append(summary, fmt.Sprintf("%d discovered (no ticket)", len(gaps)))
 	}
+	if len(trivyVulns) > 0 {
+		summary = append(summary, fmt.Sprintf("%d trivy-only", len(trivyVulns)))
+	}
 	if len(errors) > 0 {
 		summary = append(summary, fmt.Sprintf("%d errors", len(errors)))
 	}
@@ -596,7 +687,21 @@ func statusRank(status string) int {
 }
 
 func sortCombinedRows(rows []combinedRow) {
-	sourceOrder := map[string]int{"Both": 0, "Jira": 1, "Scan": 2}
+	sourceRank := func(src string) int {
+		if strings.Contains(src, "+") {
+			return 0
+		}
+		switch src {
+		case "Jira":
+			return 1
+		case "GVC":
+			return 2
+		case "Trivy":
+			return 3
+		default:
+			return 4
+		}
+	}
 	priorityOrder := map[types.Priority]int{
 		types.PriorityCritical:    0,
 		types.PriorityHigh:        1,
@@ -610,8 +715,8 @@ func sortCombinedRows(rows []combinedRow) {
 	}
 
 	sort.Slice(rows, func(i, j int) bool {
-		si := sourceOrder[rows[i].src]
-		sj := sourceOrder[rows[j].src]
+		si := sourceRank(rows[i].src)
+		sj := sourceRank(rows[j].src)
 		if si != sj {
 			return si < sj
 		}
@@ -659,12 +764,36 @@ func formatCVEAliases(aliases []string, maxWidth int) string {
 	return first + suffix
 }
 
+func compositeSource(base string, inGvc, inTrivy bool) string {
+	parts := []string{base}
+	if inGvc && base != "G" {
+		parts = append(parts, "G")
+	}
+	if inTrivy && base != "T" {
+		parts = append(parts, "T")
+	}
+	if len(parts) == 1 {
+		switch base {
+		case "J":
+			return "Jira"
+		case "G":
+			return "GVC"
+		case "T":
+			return "Trivy"
+		}
+	}
+	return strings.Join(parts, "+")
+}
+
 func colorForSource(src string) string {
-	switch src {
-	case "Both":
+	if strings.Contains(src, "+") {
 		return colorCyanBold
-	case "Scan":
+	}
+	switch src {
+	case "GVC":
 		return colorMed
+	case "Trivy":
+		return colorHigh
 	default:
 		return colorString
 	}
@@ -897,5 +1026,6 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanShort, "short", false, "Print compact summary table instead of full JSON")
 	scanCmd.Flags().BoolVar(&scanDiscover, "discover", false, "Run govulncheck-only discovery (skip Jira assessment)")
 	scanCmd.Flags().StringVar(&scanSince, "since", "", "Filter tickets by creation date (e.g., 1w, 30d, 1y, or 2025-01-01)")
+	scanCmd.Flags().BoolVar(&scanTrivy, "trivy", false, "Also run Trivy vulnerability scan")
 	rootCmd.AddCommand(scanCmd)
 }

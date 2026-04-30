@@ -87,18 +87,18 @@ func TestSortVulns(t *testing.T) {
 func TestMatchedCVEIDs(t *testing.T) {
 	result := &types.DiscoverResult{
 		Vulns: []types.DiscoveredVuln{
-			{CVEIDs: []string{"CVE-2026-1111", "CVE-2026-2222"}, Source: "Both"},
+			{CVEIDs: []string{"CVE-2026-1111", "CVE-2026-2222"}, Source: "Multi"},
 			{CVEIDs: []string{"CVE-2026-3333"}, Source: "Scan"},
 		},
 	}
 
 	m := MatchedCVEIDs(result)
 
-	if m["CVE-2026-1111"] != "Both" {
-		t.Errorf("CVE-2026-1111 source = %q, want Both", m["CVE-2026-1111"])
+	if m["CVE-2026-1111"] != "Multi" {
+		t.Errorf("CVE-2026-1111 source = %q, want Multi", m["CVE-2026-1111"])
 	}
-	if m["CVE-2026-2222"] != "Both" {
-		t.Errorf("CVE-2026-2222 source = %q, want Both", m["CVE-2026-2222"])
+	if m["CVE-2026-2222"] != "Multi" {
+		t.Errorf("CVE-2026-2222 source = %q, want Multi", m["CVE-2026-2222"])
 	}
 	if m["CVE-2026-3333"] != "Scan" {
 		t.Errorf("CVE-2026-3333 source = %q, want Scan", m["CVE-2026-3333"])

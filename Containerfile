@@ -10,7 +10,9 @@ RUN go install golang.org/x/vuln/cmd/govulncheck@latest
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates skopeo && \
+    git ca-certificates skopeo curl && \
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin && \
+    apt-get purge -y curl && apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
 COPY certs/ /tmp/rh-certs/
@@ -22,6 +24,7 @@ RUN if ls /tmp/rh-certs/*.pem 1>/dev/null 2>&1; then \
 COPY --from=builder /usr/local/bin/vigil /usr/local/bin/vigil
 COPY --from=builder /go/bin/govulncheck /usr/local/bin/govulncheck
 
+ENV TRIVY_CACHE_DIR=/tmp/trivy
 USER nobody
 WORKDIR /workspace
 ENTRYPOINT ["vigil"]

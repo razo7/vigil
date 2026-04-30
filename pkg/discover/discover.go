@@ -94,7 +94,7 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 			}
 			dv.TicketID = strings.Join(ids, ", ")
 			dv.TicketStatus = matchedTickets[0].Status
-			dv.Source = "Both"
+			dv.Source = "Multi"
 		} else {
 			dv.Source = "Scan"
 		}
@@ -212,6 +212,18 @@ func injectSinceClause(jql, since string) string {
 	return jql + clause
 }
 
+func ResolveComponentRepo(component string) (string, func(), error) {
+	fullName, ok := componentFullName[strings.ToLower(component)]
+	if !ok {
+		return "", nil, fmt.Errorf("unknown component %q", component)
+	}
+	url := assess.DeriveRepoURL(fullName)
+	if url == "" {
+		return "", nil, fmt.Errorf("no repo URL for component %q", component)
+	}
+	return assess.ResolveRepoPath(url)
+}
+
 func findMatchingTickets(aliases []string, ticketMap map[string]*jira.TicketInfo) []*jira.TicketInfo {
 	if ticketMap == nil {
 		return nil
@@ -258,10 +270,20 @@ func ticketStatusRank(status string) int {
 }
 
 func SortVulns(vulns []types.DiscoveredVuln) {
-	sourceOrder := map[string]int{
-		"Both": 0,
-		"Jira": 1,
-		"Scan": 2,
+	sourceRank := func(src string) int {
+		if strings.Contains(src, "+") {
+			return 0
+		}
+		switch src {
+		case "Jira":
+			return 1
+		case "GVC", "Scan":
+			return 2
+		case "Trivy":
+			return 3
+		default:
+			return 4
+		}
 	}
 	priorityOrder := map[types.Priority]int{
 		types.PriorityCritical:    0,
@@ -280,8 +302,8 @@ func SortVulns(vulns []types.DiscoveredVuln) {
 	}
 
 	sort.Slice(vulns, func(i, j int) bool {
-		si := sourceOrder[vulns[i].Source]
-		sj := sourceOrder[vulns[j].Source]
+		si := sourceRank(vulns[i].Source)
+		sj := sourceRank(vulns[j].Source)
 		if si != sj {
 			return si < sj
 		}
