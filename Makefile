@@ -1,6 +1,7 @@
 IMAGE_REGISTRY ?= quay.io/oraz
 IMAGE_NAME ?= vigil
 VERSION ?= 0.0.2
+IMAGE_TAG ?= latest
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 
 COMMIT_COUNT := $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
@@ -33,18 +34,12 @@ lint: vet fmt-check ## Run all linters
 .PHONY: docker-build
 docker-build: ## Build container image
 	@mkdir -p certs && cp /etc/pki/ca-trust/source/anchors/*.pem certs/ 2>/dev/null; true
-	$(CONTAINER_TOOL) build -t $(IMG):latest -f Containerfile .
+	$(CONTAINER_TOOL) build -t $(IMG):$(IMAGE_TAG) -f Containerfile .
 	@rm -rf certs
 
 .PHONY: docker-push
-docker-push: ## Push container image with latest and milestone tags
-	$(CONTAINER_TOOL) push $(IMG):latest
-	@if [ $$(( $(COMMIT_COUNT) % 10 )) -eq 0 ] && [ $(COMMIT_COUNT) -gt 0 ]; then \
-		echo "Build milestone: tagging v$(VERSION)-$(BUILD_NUMBER)-$(SHORT_SHA)"; \
-		$(CONTAINER_TOOL) tag $(IMG):latest $(IMG):v$(VERSION)-$(BUILD_NUMBER)-$(SHORT_SHA); \
-		$(CONTAINER_TOOL) push $(IMG):v$(VERSION)-$(BUILD_NUMBER)-$(SHORT_SHA); \
-		./hack/changelog.sh "$(VERSION)" "$(BUILD_NUMBER)" "$(SHORT_SHA)"; \
-	fi
+docker-push: ## Push container image
+	$(CONTAINER_TOOL) push $(IMG):$(IMAGE_TAG)
 
 .PHONY: changelog
 changelog: ## Generate changelog for current build milestone

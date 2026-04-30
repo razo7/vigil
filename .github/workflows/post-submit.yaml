@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -30,10 +32,16 @@ jobs:
           password: ${{ secrets.QUAY_PASSWORD }}
           registry: quay.io
 
-      - name: Build and push image
+      - name: Build and push latest image
+        if: ${{ github.ref_type != 'tag' }}
         run: make container-build-and-push
 
+      - name: Build and push versioned image
+        if: ${{ github.ref_type == 'tag' }}
+        run: IMAGE_TAG=$GITHUB_REF_NAME make container-build-and-push
+
       - name: Detect milestone build
+        if: ${{ github.ref_type != 'tag' }}
         id: milestone
         run: |
           COMMIT_COUNT=$(git rev-list --count HEAD)
@@ -50,11 +58,12 @@ jobs:
             echo "is_milestone=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit changelog and tag milestone
-        if: steps.milestone.outputs.is_milestone == 'true'
+      - name: Generate changelog and create tag
+        if: ${{ github.ref_type != 'tag' && steps.milestone.outputs.is_milestone == 'true' }}
         env:
           IMAGE_TAG: ${{ steps.milestone.outputs.image_tag }}
         run: |
+          make changelog
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/v*/
