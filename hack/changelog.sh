@@ -5,7 +5,7 @@ VERSION="${1:?Usage: changelog.sh VERSION BUILD_NUMBER SHORT_SHA}"
 BUILD_NUMBER="${2:?Usage: changelog.sh VERSION BUILD_NUMBER SHORT_SHA}"
 SHORT_SHA="${3:?Usage: changelog.sh VERSION BUILD_NUMBER SHORT_SHA}"
 
-OUTFILE="docs/changelog-v${VERSION}-${BUILD_NUMBER}.md"
+OUTFILE="docs/v${VERSION}/changelog-build-${BUILD_NUMBER}.md"
 COMMIT_COUNT=$(git rev-list --count HEAD)
 RANGE_SIZE=10
 DATE=$(date -u +%Y-%m-%d)
@@ -24,7 +24,7 @@ else
     PREV_TAG="(initial)"
 fi
 
-mkdir -p docs
+mkdir -p "docs/v${VERSION}"
 
 {
     echo "# Vigil v${VERSION}-${BUILD_NUMBER} -- Build Changelog"

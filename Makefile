@@ -4,7 +4,9 @@ VERSION ?= 0.0.2
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 
 COMMIT_COUNT := $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
-BUILD_NUMBER := $(shell echo $$(( $(COMMIT_COUNT) / 10 )))
+VERSION_BASE := $(shell git rev-list --count v$(VERSION) 2>/dev/null || echo $(COMMIT_COUNT))
+COMMITS_SINCE := $(shell echo $$(( $(COMMIT_COUNT) - $(VERSION_BASE) )))
+BUILD_NUMBER := $(shell echo $$(( $(COMMITS_SINCE) / 10 + 1 )))
 SHORT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || echo docker)

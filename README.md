@@ -1,5 +1,7 @@
 # Vigil
 
+> **Repo:** [github.com/razo7/vigil](https://github.com/razo7/vigil)
+
 Deterministic CVE assessment tool for [medik8s](https://github.com/medik8s) operators.
 
 **Vigil** (Latin: *watchfulness, alertness*) automates the triage of CVE tickets by combining `govulncheck` reachability analysis, CVSS scoring, OCP lifecycle data, and misassignment detection into a single deterministic pipeline. No LLM judgment — every classification decision is codified in Go.
