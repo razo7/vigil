@@ -77,8 +77,8 @@ func checkMisassignment(in Input) string {
 		return "Go CVE assigned to bundle image (OLM metadata only, no Go runtime)"
 	}
 
-	if isRHEL8Image(in.ImageName) && in.SupportPhase == types.PhaseEOL {
-		return "CVE targets RHEL8-based image for EOL operator version"
+	if in.SupportPhase == types.PhaseEOL {
+		return "CVE targets EOL operator version (OCP support ended)"
 	}
 
 	return ""
@@ -94,13 +94,6 @@ func isBundleImage(name string) bool {
 		}
 	}
 	return false
-}
-
-func isRHEL8Image(name string) bool {
-	if name == "" {
-		return false
-	}
-	return containsIgnoreCase(name, "rhel8") || containsIgnoreCase(name, "rhel-8")
 }
 
 func containsIgnoreCase(s, substr string) bool {
