@@ -232,7 +232,12 @@ func runCombinedScan() error {
 		ticketID := ticket.Key
 
 		ticketLink := termLink(ticketID, fmt.Sprintf("https://redhat.atlassian.net/browse/%s", ticketID))
-		fmt.Fprintf(os.Stderr, "[%d/%d] %s ", i+1, len(cveTickets), ticketLink)
+		if stderrColor {
+			sc := colorForStatus(ticket.Status)
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s %s[%s]%s ", i+1, len(cveTickets), ticketLink, sc, ticket.Status, colorReset)
+		} else {
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s [%s] ", i+1, len(cveTickets), ticketLink, ticket.Status)
+		}
 
 		result, err := assess.Run(ctx, assess.Options{
 			TicketID: ticketID,
@@ -246,15 +251,13 @@ func runCombinedScan() error {
 
 		results = append(results, result)
 		if stderrColor {
-			sc := colorForStatus(ticket.Status)
 			cc := colorForClassification(result.Recommendation.Classification)
 			pc := colorForPriority(result.Recommendation.Priority)
-			fmt.Fprintf(os.Stderr, "%s[%s]%s → %s%s%s (%s%s%s)\n",
-				sc, ticket.Status, colorReset,
+			fmt.Fprintf(os.Stderr, "→ %s%s%s (%s%s%s)\n",
 				cc, result.Recommendation.Classification, colorReset,
 				pc, result.Recommendation.Priority, colorReset)
 		} else {
-			fmt.Fprintf(os.Stderr, "[%s] → %s (%s)\n", ticket.Status, result.Recommendation.Classification, result.Recommendation.Priority)
+			fmt.Fprintf(os.Stderr, "→ %s (%s)\n", result.Recommendation.Classification, result.Recommendation.Priority)
 		}
 
 		if scanJira {
@@ -668,8 +671,8 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
 
-	headerFmt := "%-5s %-18s %-10s %-16s %-8s %-7s %-20s %-16s %-14s %-24s %5s %s\n"
-	lineWidth := 187
+	headerFmt := "%-5s %-18s %-10s %-16s %-8s %-10s %-20s %-16s %-14s %-28s %5s %s\n"
+	lineWidth := 194
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
@@ -723,7 +726,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			prioColor := colorForPriority(row.priority)
 			statusColor := colorForStatus(row.rawStatus)
 			srcColor := colorForSource(row.src)
-			fmt.Printf("%s%-5s%s %s %-10s %s %-8s %-7s %s%-20s%s %s%-16s%s %s%-14s%s %-24s %5.1f %s\n",
+			fmt.Printf("%s%-5s%s %s %-10s %s %-8s %-10s %s%-20s%s %s%-16s%s %s%-14s%s %-28s %5.1f %s\n",
 				srcColor, row.src, colorReset,
 				ticketDisplay, createdDisplay, cveDisplay, row.version, langDisplay,
 				statusColor, row.status, colorReset,
@@ -731,7 +734,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 				prioColor, priority, colorReset,
 				pkgDisplay, row.cvss, reachDisplay)
 		} else {
-			fmt.Printf("%-5s %-18s %-10s %-16s %-8s %-7s %-20s %-16s %-14s %-24s %5.1f %s\n",
+			fmt.Printf("%-5s %-18s %-10s %-16s %-8s %-10s %-20s %-16s %-14s %-28s %5.1f %s\n",
 				row.src, row.ticket, createdDisplay, row.cveID, row.version, langDisplay, row.status, class, priority, pkgDisplay, row.cvss, reachDisplay)
 		}
 	}
