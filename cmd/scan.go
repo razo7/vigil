@@ -301,6 +301,8 @@ func runCombinedScan() error {
 		}
 	}
 
+	recordBlockedFromScan(results)
+
 	if scanSummaryFile != "" {
 		if err := writeBatchSummary(scanSummaryFile, results); err != nil {
 			return fmt.Errorf("writing summary: %w", err)

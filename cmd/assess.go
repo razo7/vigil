@@ -6,6 +6,7 @@ import (
 
 	"github.com/razo7/vigil/pkg/assess"
 	"github.com/razo7/vigil/pkg/report"
+	"github.com/razo7/vigil/pkg/types"
 	"github.com/spf13/cobra"
 )
 
@@ -47,6 +48,10 @@ analysis, check downstream base image compatibility, and classify the CVE.`,
 				return fmt.Errorf("posting to jira: %w", err)
 			}
 			fmt.Fprintf(os.Stderr, "Posted assessment to %s\n", ticketID)
+		}
+
+		if result.Recommendation.Classification == types.BlockedByGo {
+			recordBlockedCVE(result)
 		}
 
 		return nil
