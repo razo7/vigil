@@ -44,12 +44,14 @@ jobs:
         if: ${{ github.ref_type != 'tag' }}
         id: milestone
         run: |
-          COMMIT_COUNT=$(git rev-list --count HEAD)
           VERSION=$(grep '^VERSION ?=' Makefile | awk '{print $3}')
-          if [ $(( COMMIT_COUNT % 10 )) -eq 0 ] && [ "$COMMIT_COUNT" -gt 0 ]; then
-            VERSION_BASE=$(git rev-list --count "v${VERSION}" 2>/dev/null || echo "$COMMIT_COUNT")
-            COMMITS_SINCE=$(( COMMIT_COUNT - VERSION_BASE ))
-            BUILD_NUMBER=$(( COMMITS_SINCE / 10 + 1 ))
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          VERSION_BASE=$(git rev-list --count "v${VERSION}" 2>/dev/null || echo "$COMMIT_COUNT")
+          COMMITS_SINCE=$(( COMMIT_COUNT - VERSION_BASE ))
+          BUILD_NUMBER=$(( COMMITS_SINCE / 10 + 1 ))
+          LATEST_BUILD=$(git tag -l "v${VERSION}-*" | grep -oP '(?<=-)\d+(?=-)' | sort -n | tail -1)
+          LATEST_BUILD=${LATEST_BUILD:-0}
+          if [ "$BUILD_NUMBER" -gt "$LATEST_BUILD" ]; then
             SHORT_SHA=$(git rev-parse --short HEAD)
             IMAGE_TAG="v${VERSION}-${BUILD_NUMBER}-${SHORT_SHA}"
             echo "is_milestone=true" >> "$GITHUB_OUTPUT"
