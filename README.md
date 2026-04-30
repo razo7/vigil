@@ -1,6 +1,6 @@
 # Vigil
 
-> **Repo:** [github.com/razo7/vigil](https://github.com/razo7/vigil)
+[GitHub](https://github.com/razo7/vigil) | [Container images](https://quay.io/repository/oraz/vigil)
 
 Deterministic CVE assessment tool for [medik8s](https://github.com/medik8s) operators.
 

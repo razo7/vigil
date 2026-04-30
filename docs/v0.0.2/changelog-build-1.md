@@ -1,9 +1,9 @@
-# Vigil v0.0.2-6 -- Build Changelog
+# Vigil v0.0.2-1 -- Build Changelog
 
-**Image:** [`quay.io/oraz/vigil:v0.0.2-6-c2397b4`](https://quay.io/repository/oraz/vigil?tab=tags&tag=v0.0.2-6-c2397b4)
+**Image:** [`quay.io/oraz/vigil:v0.0.2-1-c2397b4`](https://quay.io/repository/oraz/vigil?tab=tags&tag=v0.0.2-1-c2397b4)
 **Date:** 2026-04-30
 **Commits:** bbaae9a..c2397b4 (10 commits)
-**Previous image:** v0.0.2-5
+**Previous image:** v0.0.1-5-bbaae9a
 
 ## Highlights
 
