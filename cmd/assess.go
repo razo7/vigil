@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/razo7/vigil/pkg/assess"
+	"github.com/razo7/vigil/pkg/fix"
 	"github.com/razo7/vigil/pkg/report"
 	"github.com/razo7/vigil/pkg/types"
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ var (
 	assessJira        bool
 	assessSummaryFile string
 	assessRepoPath    string
+	assessFix         bool
 )
 
 var assessCmd = &cobra.Command{
@@ -54,6 +56,25 @@ analysis, check downstream base image compatibility, and classify the CVE.`,
 			recordBlockedCVE(result)
 		}
 
+		if assessFix && result.Recommendation.Classification == types.FixableNow {
+			fmt.Fprintf(os.Stderr, "Classification is Fixable Now — running fix pipeline...\n")
+			fixResult, fixErr := fix.Run(cmd.Context(), fix.Options{
+				TicketID: ticketID,
+				RepoPath: assessRepoPath,
+				Strategy: fix.StrategyAuto,
+				CreatePR: true,
+				Jira:     assessJira,
+			})
+			if fixResult != nil {
+				if jsonErr := printJSON(fixResult); jsonErr != nil {
+					fmt.Fprintf(os.Stderr, "WARNING: marshaling fix result: %v\n", jsonErr)
+				}
+			}
+			if fixErr != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: fix pipeline: %v\n", fixErr)
+			}
+		}
+
 		return nil
 	},
 }
@@ -62,5 +83,6 @@ func init() {
 	assessCmd.Flags().BoolVar(&assessJira, "jira", false, "Post assessment as Jira comment")
 	assessCmd.Flags().StringVar(&assessSummaryFile, "summary-file", "", "Write sanitized summary to file")
 	assessCmd.Flags().StringVar(&assessRepoPath, "repo-path", "", "Path to operator repo (auto-detected from Jira component if omitted)")
+	assessCmd.Flags().BoolVar(&assessFix, "fix", false, "Auto-fix if classified as Fixable Now")
 	rootCmd.AddCommand(assessCmd)
 }

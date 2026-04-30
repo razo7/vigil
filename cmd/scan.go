@@ -10,6 +10,7 @@ import (
 
 	"github.com/razo7/vigil/pkg/assess"
 	"github.com/razo7/vigil/pkg/discover"
+	"github.com/razo7/vigil/pkg/fix"
 	"github.com/razo7/vigil/pkg/jira"
 	"github.com/razo7/vigil/pkg/report"
 	"github.com/razo7/vigil/pkg/trivy"
@@ -29,6 +30,7 @@ var (
 	scanDiscover      bool
 	scanSince         string
 	scanTrivy         bool
+	scanFix           bool
 )
 
 var componentJQLMap = map[string]string{
@@ -246,6 +248,26 @@ func runCombinedScan() error {
 		if scanJira {
 			if err := report.PostToJira(result); err != nil {
 				fmt.Fprintf(os.Stderr, "  WARNING: failed to post Jira comment: %v\n", err)
+			}
+		}
+
+		if scanFix && result.Recommendation.Classification == types.FixableNow {
+			fmt.Fprintf(os.Stderr, "  → Running fix pipeline for %s...\n", ticketID)
+			fixResult, fixErr := fix.Run(ctx, fix.Options{
+				TicketID: ticketID,
+				RepoPath: scanRepoPath,
+				Strategy: fix.StrategyAuto,
+				DryRun:   fixDryRun,
+				CreatePR: !fixDryRun,
+				Jira:     scanJira,
+			})
+			if fixResult != nil {
+				if jsonErr := printJSON(fixResult); jsonErr != nil {
+					fmt.Fprintf(os.Stderr, "  WARNING: marshaling fix result: %v\n", jsonErr)
+				}
+			}
+			if fixErr != nil {
+				fmt.Fprintf(os.Stderr, "  WARNING: fix failed: %v\n", fixErr)
 			}
 		}
 	}
@@ -1097,5 +1119,6 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanDiscover, "discover", false, "Run govulncheck-only discovery (skip Jira assessment)")
 	scanCmd.Flags().StringVar(&scanSince, "since", "", "Filter tickets by creation date (e.g., 1w, 30d, 1y, or 2025-01-01)")
 	scanCmd.Flags().BoolVar(&scanTrivy, "trivy", true, "Run Trivy vulnerability scan (use --trivy=false to disable)")
+	scanCmd.Flags().BoolVar(&scanFix, "fix", false, "Auto-fix Fixable Now tickets (use with --dry-run for preview)")
 	rootCmd.AddCommand(scanCmd)
 }

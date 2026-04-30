@@ -92,6 +92,46 @@ func FetchGoVersion(operatorName, imageName, branch string) (*ContainerfileInfo,
 		operatorName, branch, len(candidates), lastErr)
 }
 
+func FetchContainerfileContent(operatorName, imageName, operatorVersion string) (string, error) {
+	branches := downstreamBranches(operatorName, operatorVersion)
+	if len(branches) == 0 {
+		return "", fmt.Errorf("no downstream branches for %s", operatorName)
+	}
+
+	token := os.Getenv("GITLAB_TOKEN")
+	if token == "" {
+		token = os.Getenv("GITLAB_PRIVATE_TOKEN")
+	}
+	if token == "" {
+		return "", fmt.Errorf("GITLAB_TOKEN required")
+	}
+
+	host := os.Getenv("GITLAB_HOST")
+	if host == "" {
+		host = defaultGitLabHost
+	}
+
+	projectPath := fmt.Sprintf("dragonfly/%s", operatorName)
+
+	for _, branch := range branches {
+		candidates := []string{
+			fmt.Sprintf("Containerfile.%s", operatorName),
+			fmt.Sprintf("distgit/containers/%s/Dockerfile.in", operatorName),
+		}
+		if !strings.HasSuffix(operatorName, "-operator") {
+			candidates = append(candidates,
+				fmt.Sprintf("distgit/containers/%s-operator/Dockerfile.in", operatorName))
+		}
+		for _, filePath := range candidates {
+			content, err := fetchFileFromGitLab(host, token, projectPath, filePath, branch)
+			if err == nil {
+				return content, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no Containerfile found for %s@%s", operatorName, operatorVersion)
+}
+
 func FetchGoVersionForOperator(operatorName, imageName, operatorVersion string) (*ContainerfileInfo, error) {
 	branches := downstreamBranches(operatorName, operatorVersion)
 	if len(branches) == 0 {

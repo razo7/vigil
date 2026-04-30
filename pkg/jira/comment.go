@@ -30,6 +30,10 @@ func (c *Client) PostComment(ticketID, body string) error {
 				},
 			},
 		},
+		"visibility": map[string]interface{}{
+			"type":  "role",
+			"value": "RH associate",
+		},
 	}
 
 	data, err := json.Marshal(adfBody)

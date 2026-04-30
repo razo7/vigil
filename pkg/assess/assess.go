@@ -35,7 +35,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		return nil, fmt.Errorf("no CVE ID found in ticket %s", opts.TicketID)
 	}
 
-	operatorName := deriveOperatorName(ticket.Component)
+	operatorName := DeriveOperatorName(ticket.Component)
 
 	if ticket.OperatorVersion == "" {
 		for _, av := range ticket.AffectsVersions {
@@ -452,7 +452,7 @@ var operatorMap = map[string]operatorInfo{
 	"node remediation console":     {Name: "node-remediation-console", RepoURL: "https://github.com/medik8s/node-remediation-console.git"},
 }
 
-func deriveOperatorName(component string) string {
+func DeriveOperatorName(component string) string {
 	lower := strings.ToLower(component)
 	for key, info := range operatorMap {
 		if strings.Contains(lower, key) {
