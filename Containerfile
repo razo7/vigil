@@ -21,6 +21,11 @@ RUN for f in /usr/local/share/ca-certificates/*.pem; do \
         mv "$f" "${f%.pem}.crt"; \
     done && update-ca-certificates
 
+COPY --from=builder /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH=/tmp/go
+ENV GOMODCACHE=/tmp/go/mod
+
 COPY --from=builder /usr/local/bin/vigil /usr/local/bin/vigil
 COPY --from=builder /go/bin/govulncheck /usr/local/bin/govulncheck
 COPY --from=builder /go/bin/jira /usr/local/bin/jira

@@ -99,7 +99,16 @@ func RunGovulncheck(repoPath string) (*VulncheckResult, error) {
 		return &VulncheckResult{}, nil
 	}
 
-	return parseGovulncheckOutput(stdout.Bytes())
+	result, err := parseGovulncheckOutput(stdout.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	if runErr != nil && len(result.Vulns) == 0 {
+		return nil, fmt.Errorf("govulncheck exited with error (possible toolchain issue): %w: %s", runErr, stderr.String())
+	}
+
+	return result, nil
 }
 
 func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
