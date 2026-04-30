@@ -35,6 +35,7 @@ type Vulnerability struct {
 	Severity         string            `json:"Severity"`
 	PrimaryURL       string            `json:"PrimaryURL"`
 	CVSS             map[string]CVSSv3 `json:"CVSS"`
+	PublishedDate    string            `json:"PublishedDate"`
 }
 
 type CVSSv3 struct {
@@ -96,6 +97,10 @@ func ToDiscoveredVulns(report *Report, currentGo string) []types.DiscoveredVuln 
 			}
 			classification, priority, _ := classify.Classify(input)
 
+			published := v.PublishedDate
+			if len(published) >= 10 {
+				published = published[:10]
+			}
 			dv := types.DiscoveredVuln{
 				VulnID:         v.VulnerabilityID,
 				Description:    v.Title,
@@ -111,6 +116,7 @@ func ToDiscoveredVulns(report *Report, currentGo string) []types.DiscoveredVuln 
 				Classification: classification,
 				Priority:       priority,
 				Source:         "Trivy",
+				CVEPublished:   published,
 			}
 			vulns = append(vulns, dv)
 		}

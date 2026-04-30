@@ -642,6 +642,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			reachability:   v.Reachability,
 			callPaths:      v.CallPaths,
 			importChain:    v.ImportChain,
+			created:        v.CVEPublished,
 		})
 	}
 	for _, v := range trivyVulns {
@@ -660,6 +661,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			pkgSrc:         "trivy",
 			cvss:           v.Severity,
 			reachability:   v.Reachability,
+			created:        v.CVEPublished,
 		})
 	}
 

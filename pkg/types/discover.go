@@ -22,6 +22,7 @@ type DiscoveredVuln struct {
 	TicketID       string         `json:"ticket_id,omitempty"`
 	TicketStatus   string         `json:"ticket_status,omitempty"`
 	Source         string         `json:"source"`
+	CVEPublished   string         `json:"cve_published,omitempty"`
 }
 
 type DiscoverResult struct {

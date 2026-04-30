@@ -104,6 +104,7 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 			if err == nil && cveInfo != nil {
 				dv.Severity = cveInfo.Score
 				dv.SeverityLabel = cveInfo.Severity
+				dv.CVEPublished = cveInfo.Published
 			}
 		}
 

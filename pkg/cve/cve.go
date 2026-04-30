@@ -15,6 +15,7 @@ type CVEInfo struct {
 	CWE            string
 	CWEDescription string
 	References     []string
+	Published      string
 }
 
 func FetchCVSSScore(cveID string) (*CVEInfo, error) {
@@ -50,6 +51,12 @@ func parseCVEResponse(data []byte) (*CVEInfo, error) {
 	}
 
 	result := &CVEInfo{}
+
+	if meta, _ := raw["cveMetadata"].(map[string]interface{}); meta != nil {
+		if pub, _ := meta["datePublished"].(string); pub != "" && len(pub) >= 10 {
+			result.Published = pub[:10]
+		}
+	}
 
 	if cna, _ := containers["cna"].(map[string]interface{}); cna != nil {
 		if descs, _ := cna["descriptions"].([]interface{}); len(descs) > 0 {
