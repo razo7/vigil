@@ -48,7 +48,7 @@ var scanCmd = &cobra.Command{
 then assess each one. By default, also runs govulncheck to discover
 vulnerabilities that may not have Jira tickets yet.
 
-Use --discover to run govulncheck-only discovery without Jira assessment.`,
+Use --discover to run govulncheck + Trivy discovery without Jira assessment.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if scanComponent == "" && scanJQL == "" {
 			return fmt.Errorf("either --component or --jql is required")
@@ -67,9 +67,22 @@ func runDiscoverOnly() error {
 		return fmt.Errorf("--discover requires --repo-path or --component")
 	}
 
+	repoPath := scanRepoPath
+	var repoCleanup func()
+	if repoPath == "" && scanComponent != "" {
+		var resolveErr error
+		repoPath, repoCleanup, resolveErr = discover.ResolveComponentRepo(scanComponent)
+		if resolveErr != nil {
+			return fmt.Errorf("resolving repo for %s: %w", scanComponent, resolveErr)
+		}
+		if repoCleanup != nil {
+			defer repoCleanup()
+		}
+	}
+
 	ctx := context.Background()
 	discResult, err := discover.Run(ctx, discover.Options{
-		RepoPath:  scanRepoPath,
+		RepoPath:  repoPath,
 		Component: scanComponent,
 		JQL:       scanJQL,
 		Since:     scanSince,
@@ -78,9 +91,60 @@ func runDiscoverOnly() error {
 		return fmt.Errorf("running discovery: %w", err)
 	}
 
-	if len(discResult.Vulns) == 0 {
-		fmt.Println("No vulnerabilities discovered by govulncheck.")
+	gvcCVEs := make(map[string]bool)
+	for _, v := range discResult.Vulns {
+		for _, cve := range v.CVEIDs {
+			gvcCVEs[cve] = true
+		}
+	}
+
+	var trivyVulns []types.DiscoveredVuln
+	if scanTrivy && repoPath != "" {
+		fmt.Fprintf(os.Stderr, "\nRunning Trivy scan...\n")
+		trivyReport, trivyErr := trivy.Run(repoPath)
+		if trivyErr != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: Trivy scan failed: %v\n", trivyErr)
+		} else {
+			allTrivy := trivy.ToDiscoveredVulns(trivyReport, discResult.GoVersion)
+			for i := range allTrivy {
+				isGvc := false
+				for _, cveID := range allTrivy[i].CVEIDs {
+					if gvcCVEs[cveID] {
+						isGvc = true
+						break
+					}
+				}
+				if isGvc {
+					for j := range discResult.Vulns {
+						for _, cveID := range discResult.Vulns[j].CVEIDs {
+							for _, tCVE := range allTrivy[i].CVEIDs {
+								if cveID == tCVE {
+									if !strings.Contains(discResult.Vulns[j].Source, "T") {
+									discResult.Vulns[j].Source = "G+T"
+								}
+								}
+							}
+						}
+					}
+				} else {
+					allTrivy[i].Source = "Trivy"
+					trivyVulns = append(trivyVulns, allTrivy[i])
+				}
+			}
+			fmt.Fprintf(os.Stderr, "Trivy found %d vulnerabilities (%d unique after dedup)\n", len(allTrivy), len(trivyVulns))
+		}
+	}
+
+	totalVulns := len(discResult.Vulns) + len(trivyVulns)
+	if totalVulns == 0 {
+		fmt.Println("No vulnerabilities discovered.")
 		return nil
+	}
+
+	if len(trivyVulns) > 0 {
+		discResult.Vulns = append(discResult.Vulns, trivyVulns...)
+		discResult.TotalVulns = len(discResult.Vulns)
+		discResult.NoTicket = discResult.TotalVulns - discResult.WithTicket
 	}
 
 	if scanShort {
@@ -378,16 +442,16 @@ func writeBatchSummary(path string, results []*types.Result) error {
 func printDiscoverTable(disc *types.DiscoverResult) {
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 
-	headerFmt := "%-18s %-16s %-16s %-14s %-14s %-22s %5s %-14s\n"
-	lineWidth := 135
+	headerFmt := "%-6s %-18s %-16s %-16s %-14s %-22s %5s %-14s\n"
+	lineWidth := 140
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
-			"TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PKG-SOURCE", "PACKAGE", "CVSS", "REACHABILITY")
+			"SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(headerFmt,
-			"TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PKG-SOURCE", "PACKAGE", "CVSS", "REACHABILITY")
+			"SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
@@ -396,11 +460,14 @@ func printDiscoverTable(disc *types.DiscoverResult) {
 		if ticket == "" {
 			ticket = "-- none --"
 		}
+		src := v.Source
+		if src == "" || src == "Scan" {
+			src = "GVC"
+		}
 		cveCol := formatCVEAliases(v.CVEIDs, 16)
 		class := string(v.Classification)
 		priority := shortPriority(v.Priority)
 		pkg := shortPackage(v.Package)
-		pkgSrc := v.PackageSource
 
 		if isTTY {
 			classColor := colorForClassification(v.Classification)
@@ -409,15 +476,16 @@ func printDiscoverTable(disc *types.DiscoverResult) {
 			if v.HasTicket {
 				ticketColor = colorLow
 			}
-			fmt.Printf("%s%-18s%s %-16s %s%-16s%s %s%-14s%s %-14s %-22s %5.1f %-14s\n",
+			fmt.Printf("%-6s %s%-18s%s %-16s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
+				src,
 				ticketColor, ticket, colorReset,
 				cveCol,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
-				pkgSrc, pkg, v.Severity, v.Reachability)
+				pkg, v.Severity, v.Reachability)
 		} else {
-			fmt.Printf("%-18s %-16s %-16s %-14s %-14s %-22s %5.1f %-14s\n",
-				ticket, cveCol, class, priority, pkgSrc, pkg, v.Severity, v.Reachability)
+			fmt.Printf("%-6s %-18s %-16s %-16s %-14s %-22s %5.1f %-14s\n",
+				src, ticket, cveCol, class, priority, pkg, v.Severity, v.Reachability)
 		}
 	}
 
