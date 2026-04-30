@@ -16,11 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get purge -y curl && apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
-COPY certs/ /tmp/rh-certs/
-RUN if ls /tmp/rh-certs/*.pem 1>/dev/null 2>&1; then \
-        for f in /tmp/rh-certs/*.pem; do cp "$f" "/usr/local/share/ca-certificates/$(basename "$f" .pem).crt"; done && \
-        update-ca-certificates; \
-    fi && rm -rf /tmp/rh-certs
+COPY certs/*.pem /usr/local/share/ca-certificates/
+RUN for f in /usr/local/share/ca-certificates/*.pem; do \
+        mv "$f" "${f%.pem}.crt"; \
+    done && update-ca-certificates
 
 COPY --from=builder /usr/local/bin/vigil /usr/local/bin/vigil
 COPY --from=builder /go/bin/govulncheck /usr/local/bin/govulncheck

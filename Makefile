@@ -33,9 +33,7 @@ lint: vet fmt-check ## Run all linters
 
 .PHONY: docker-build
 docker-build: ## Build container image
-	@mkdir -p certs && cp /etc/pki/ca-trust/source/anchors/*.pem certs/ 2>/dev/null; true
 	$(CONTAINER_TOOL) build -t $(IMG):$(IMAGE_TAG) -f Containerfile .
-	@rm -rf certs
 
 .PHONY: docker-push
 docker-push: ## Push container image
