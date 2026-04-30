@@ -3,6 +3,7 @@ package goversion
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os/exec"
 	"strings"
@@ -89,9 +90,12 @@ func RunGovulncheck(repoPath string) (*VulncheckResult, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	_ = cmd.Run() // govulncheck exits non-zero when vulns found; we parse stdout regardless
+	runErr := cmd.Run()
 
 	if stdout.Len() == 0 {
+		if runErr != nil {
+			return nil, fmt.Errorf("govulncheck failed: %w: %s", runErr, stderr.String())
+		}
 		return &VulncheckResult{}, nil
 	}
 

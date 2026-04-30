@@ -330,7 +330,11 @@ func runCombinedScan() error {
 				discoveredGaps = append(discoveredGaps, dv)
 			}
 		}
-		fmt.Fprintf(os.Stderr, "Found %d vulnerabilities (%d with ticket, %d new)\n", len(discResult.Vulns), len(discResult.Vulns)-len(discoveredGaps), len(discoveredGaps))
+		if len(discResult.Vulns) == 0 {
+			fmt.Fprintf(os.Stderr, "govulncheck: no reachable vulnerabilities found\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "govulncheck: found %d vulnerabilities (%d with ticket, %d new)\n", len(discResult.Vulns), len(discResult.Vulns)-len(discoveredGaps), len(discoveredGaps))
+		}
 		for i, dv := range discoveredGaps {
 			cve := formatCVEAliases(dv.CVEIDs, 0)
 			if stderrColor {
