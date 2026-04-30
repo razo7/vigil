@@ -44,14 +44,10 @@ var componentMap = map[string]string{
 	"nhc-console": "Node Remediation Console",
 }
 
-func buildComponentJQL(component string, includeBugs bool) string {
-	issueTypes := "Vulnerability"
-	if includeBugs {
-		issueTypes = "Vulnerability, Bug"
-	}
+func buildComponentJQL(component string) string {
 	return fmt.Sprintf(
-		`project in (RHWA, ECOPROJECT) AND issuetype in (%s) AND component in ("%s") AND status not in (Closed) ORDER BY created DESC`,
-		issueTypes, component,
+		`project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("%s") AND status not in (Closed) ORDER BY created DESC`,
+		component,
 	)
 }
 
@@ -180,7 +176,7 @@ func runCombinedScan() error {
 		if !ok {
 			return fmt.Errorf("unknown component %q; use --jql for custom queries", scanComponent)
 		}
-		jql = buildComponentJQL(fullName, scanIncludeBugs)
+		jql = buildComponentJQL(fullName)
 		if scanIncludeClosed {
 			jql = strings.Replace(jql, " AND status not in (Closed)", "", 1)
 		}
@@ -205,10 +201,20 @@ func runCombinedScan() error {
 	}
 
 	var cveTickets []jira.TicketInfo
+	var skippedNonCVE int
 	for _, t := range tickets {
-		if t.Key != "" && t.CVEID != "" {
-			cveTickets = append(cveTickets, t)
+		if t.Key == "" {
+			continue
 		}
+		if t.CVEID == "" && !scanIncludeBugs {
+			skippedNonCVE++
+			continue
+		}
+		cveTickets = append(cveTickets, t)
+	}
+
+	if skippedNonCVE > 0 {
+		fmt.Fprintf(os.Stderr, "Skipped %d non-CVE tickets (use --include-bugs to include)\n", skippedNonCVE)
 	}
 
 	if len(cveTickets) == 0 {
