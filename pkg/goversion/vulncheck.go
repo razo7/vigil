@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -83,8 +84,15 @@ type vulncheckEvent struct {
 }
 
 func RunGovulncheck(repoPath string) (*VulncheckResult, error) {
+	return RunGovulncheckWithVersion(repoPath, "")
+}
+
+func RunGovulncheckWithVersion(repoPath, goVersion string) (*VulncheckResult, error) {
 	cmd := exec.Command("govulncheck", "-json", "./...")
 	cmd.Dir = repoPath
+	if goVersion != "" {
+		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go"+goVersion)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

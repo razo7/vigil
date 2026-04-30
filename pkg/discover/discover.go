@@ -62,8 +62,13 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 	}
 	currentGo := goMod.EffectiveVersion()
 
-	fmt.Fprintf(os.Stderr, "Running govulncheck on %s (go.mod declares Go %s)...\n", repoPath, currentGo)
-	vulnResult, err := goversion.RunGovulncheck(repoPath)
+	toolchainVer := detectToolchainVersion()
+	if toolchainVer != "" && toolchainVer != currentGo {
+		fmt.Fprintf(os.Stderr, "Running govulncheck on %s (go.mod: Go %s, toolchain: Go %s)...\n", repoPath, currentGo, toolchainVer)
+	} else {
+		fmt.Fprintf(os.Stderr, "Running govulncheck on %s (Go %s)...\n", repoPath, currentGo)
+	}
+	vulnResult, err := goversion.RunGovulncheckWithVersion(repoPath, currentGo)
 	if err != nil {
 		return nil, fmt.Errorf("running govulncheck: %w", err)
 	}
@@ -368,4 +373,13 @@ func runGoModWhy(repoPath, pkg string) string {
 		return ""
 	}
 	return strings.Join(chain, " → ")
+}
+
+func detectToolchainVersion() string {
+	cmd := exec.Command("go", "env", "GOVERSION")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.TrimSpace(string(out)), "go")
 }

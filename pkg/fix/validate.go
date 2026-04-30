@@ -29,7 +29,11 @@ func Validate(repoPath, cveID string, runTests bool) (*ValidationResult, error) 
 		return vr, nil
 	}
 
-	vulnResult, err := goversion.RunGovulncheck(repoPath)
+	goVer := ""
+	if goMod, modErr := goversion.ReadGoMod(repoPath); modErr == nil {
+		goVer = goMod.EffectiveVersion()
+	}
+	vulnResult, err := goversion.RunGovulncheckWithVersion(repoPath, goVer)
 	vulnStep := StepResult{Name: "govulncheck"}
 	if err != nil {
 		vulnStep.Output = err.Error()

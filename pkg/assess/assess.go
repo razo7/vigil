@@ -111,7 +111,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	var vulnEntry *goversion.VulnEntry
 
 	if isGoVuln {
-		vulnResult, err := goversion.RunGovulncheck(scanPath)
+		vulnResult, err := goversion.RunGovulncheckWithVersion(scanPath, currentGo)
 		if err != nil {
 			return nil, fmt.Errorf("running govulncheck: %w", err)
 		}
@@ -412,7 +412,7 @@ func assessFixUpstream(repoPath, cveID, component string) *types.FixUpstreamInfo
 		GoVersion: goVersionStr,
 	}
 
-	vulnResult, err := goversion.RunGovulncheck(repoPath)
+	vulnResult, err := goversion.RunGovulncheckWithVersion(repoPath, goMod.EffectiveVersion())
 	if err != nil {
 		return fu
 	}
