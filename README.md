@@ -92,7 +92,7 @@ podman run --rm -t \
   quay.io/oraz/vigil:latest scan --component FAR --short
 ```
 
-The container image includes govulncheck, Trivy, skopeo, and git. Red Hat IT Root CA certificates are embedded at build time for `gitlab.cee.redhat.com` access.
+The container image includes the Go toolchain (stripped for size), govulncheck, Trivy, jira CLI, skopeo, and git. Red Hat IT Root CA certificates are embedded for `gitlab.cee.redhat.com` access. The jira CLI is auto-configured at startup from `JIRA_EMAIL`.
 
 ## Usage
 
@@ -123,6 +123,13 @@ vigil scan --component FAR
 
 # Include closed tickets for historical reference
 vigil scan --component FAR --short --include-closed
+
+# Include non-CVE Bug tickets (default: CVE tickets only)
+vigil scan --component FAR --short --include-bugs
+
+# Auto-fix Fixable Now tickets (creates PRs)
+vigil scan --component FAR --fix
+vigil scan --component FAR --fix --dry-run
 
 # Filter by time range (last week, 30 days, 1 year, or specific date)
 vigil scan --component FAR --short --since 1w
@@ -240,13 +247,13 @@ Watch monitors CVEs classified as "Blocked by Go" and re-checks whether the requ
 Default mode combines Jira assessment with govulncheck discovery and optionally Trivy. The `SRC` column shows which scanners found each CVE, with composite labels when multiple sources agree.
 
 ```
-SRC   TICKET             CVE              VERSION  LANG    STATUS               CLASSIFICATION   PRIORITY       PACKAGE                   CVSS REACHABILITY
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-J+G   RHWA-881           CVE-2026-32283   v0.4     Go(gvc) New                  Fixable Now      Critical       crypto/tls(gvc)            7.5 PACKAGE-LEVEL
-Jira  RHWA-659           CVE-2026-24049   v0.6     Py(jira) Closed (Not a Bug)  Not Go           Manual         wheel(jira)                7.1 N/A
-GVC   -- none --         CVE-2026-99999            Go(gvc)                      Not Reachable    Low            archive/tar(gvc)           4.2 MODULE-LEVEL (go.mod only)
-Trivy -- none --         CVE-2026-35469            Go(trivy)                    Not Reachable    Low            github.com/moby/spdystr... 6.5 MODULE-LEVEL (go.mod only)
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+SRC   TICKET             CREATED    CVE              VERSION  LANG       STATUS               CLASSIFICATION   PRIORITY       PACKAGE                      CVSS REACHABILITY
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+J+G   RHWA-881           2026-04-13 CVE-2026-32283   v0.4     Go(gvc)    New                  Fixable Now      Critical       crypto/tls(gvc)               7.5 PACKAGE-LEVEL
+Jira  RHWA-659           2026-02-01 CVE-2026-24049   v0.6     Py(jira)   Closed (Not a Bug)   Not Go           Manual         wheel(jira)                   7.1 N/A
+GVC   -- none --                    CVE-2026-99999            Go(gvc)                         Not Reachable    Low            archive/tar(gvc)              4.2 MODULE-LEVEL (go.mod only)
+Trivy -- none --                    CVE-2026-35469            Go(trivy)                       Not Reachable    Low            github.com/moby/spdystr...    6.5 MODULE-LEVEL (go.mod only)
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 3 assessed, 1 fixable, 1 not-go, 1 discovered (no ticket), 1 trivy-only
 ```
 
@@ -366,13 +373,17 @@ v0.0.2 — extends the triage pipeline from v0.0.1 with three detection sources,
 - **ARGUS ProdSec skills** — fetch Go security, vulnerability management, and operator security skills from GitLab
 - **Claude CVE preprocessor** — offline advisory digestion with local caching
 - **RH CA certs** in container image for `gitlab.cee.redhat.com` TLS
+- **Jira CLI** in container image, auto-configured from `JIRA_EMAIL`
+- **`--include-bugs`** — filter non-CVE Bug tickets from scan results
+- **`--fix`** — auto-fix Fixable Now tickets with `vigil fix` pipeline
+- **CREATED column** in `--short` table output (Jira ticket creation date)
+- **Go toolchain** in container for govulncheck source-level analysis
 
 ### Roadmap
 
-See [docs/design-v0.0.2.md](docs/design-v0.0.2.md) and [docs/plan-v0.0.2.md](docs/plan-v0.0.2.md).
+See [docs/v0.0.2/design.md](docs/v0.0.2/design.md) and [docs/v0.0.2/plan.md](docs/v0.0.2/plan.md).
 
 **Pending for v0.0.2:**
-- `vigil fix` — automated fix PRs with 4 Go patching strategies (direct → transitive → replace → major bump)
 - Intelligent routing (deterministic fix vs AI-assisted workflow)
 
 **v0.0.3 Preview:**
