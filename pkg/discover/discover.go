@@ -170,7 +170,7 @@ func buildTicketMap(opts Options) map[string]*jira.TicketInfo {
 			return nil
 		}
 		jql = fmt.Sprintf(
-			`project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("%s") ORDER BY created DESC`,
+			`project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability) AND component in ("%s") ORDER BY created DESC`,
 			fullName,
 		)
 	}

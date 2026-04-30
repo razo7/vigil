@@ -31,16 +31,28 @@ var (
 	scanSince         string
 	scanTrivy         bool
 	scanFix           bool
+	scanIncludeBugs   bool
 )
 
-var componentJQLMap = map[string]string{
-	"far": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Fence Agents Remediation") AND status not in (Closed) ORDER BY created DESC`,
-	"snr": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Self Node Remediation") AND status not in (Closed) ORDER BY created DESC`,
-	"nhc": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Healthcheck") AND status not in (Closed) ORDER BY created DESC`,
-	"nmo": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Maintenance Operator") AND status not in (Closed) ORDER BY created DESC`,
-	"mdr": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Machine Deletion Remediation") AND status not in (Closed) ORDER BY created DESC`,
-	"sbr":         `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Storage-based Remediation") AND status not in (Closed) ORDER BY created DESC`,
-	"nhc-console": `project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("Node Remediation Console") AND status not in (Closed) ORDER BY created DESC`,
+var componentMap = map[string]string{
+	"far":         "Fence Agents Remediation",
+	"snr":         "Self Node Remediation",
+	"nhc":         "Node Healthcheck",
+	"nmo":         "Node Maintenance Operator",
+	"mdr":         "Machine Deletion Remediation",
+	"sbr":         "Storage-based Remediation",
+	"nhc-console": "Node Remediation Console",
+}
+
+func buildComponentJQL(component string, includeBugs bool) string {
+	issueTypes := "Vulnerability"
+	if includeBugs {
+		issueTypes = "Vulnerability, Bug"
+	}
+	return fmt.Sprintf(
+		`project in (RHWA, ECOPROJECT) AND issuetype in (%s) AND component in ("%s") AND status not in (Closed) ORDER BY created DESC`,
+		issueTypes, component,
+	)
 }
 
 var scanCmd = &cobra.Command{
@@ -164,11 +176,11 @@ func runCombinedScan() error {
 	jql := scanJQL
 	if jql == "" {
 		key := strings.ToLower(scanComponent)
-		var ok bool
-		jql, ok = componentJQLMap[key]
+		fullName, ok := componentMap[key]
 		if !ok {
 			return fmt.Errorf("unknown component %q; use --jql for custom queries", scanComponent)
 		}
+		jql = buildComponentJQL(fullName, scanIncludeBugs)
 		if scanIncludeClosed {
 			jql = strings.Replace(jql, " AND status not in (Closed)", "", 1)
 		}
@@ -192,37 +204,29 @@ func runCombinedScan() error {
 		}
 	}
 
-	if len(tickets) == 0 {
+	var cveTickets []jira.TicketInfo
+	for _, t := range tickets {
+		if t.Key != "" && t.CVEID != "" {
+			cveTickets = append(cveTickets, t)
+		}
+	}
+
+	if len(cveTickets) == 0 {
 		fmt.Println("No CVE tickets found.")
 	}
 
-	fmt.Fprintf(os.Stderr, "Found %d CVE tickets. Assessing...\n", len(tickets))
+	fmt.Fprintf(os.Stderr, "Found %d CVE tickets. Assessing...\n", len(cveTickets))
 
 	ctx := context.Background()
 	var results []*types.Result
 	var errors []string
-
 	stderrColor := forceColor || term.IsTerminal(int(os.Stderr.Fd()))
 
-	for i, ticket := range tickets {
+	for i, ticket := range cveTickets {
 		ticketID := ticket.Key
-		if ticketID == "" {
-			continue
-		}
 
 		ticketLink := termLink(ticketID, fmt.Sprintf("https://redhat.atlassian.net/browse/%s", ticketID))
-		fmt.Fprintf(os.Stderr, "[%d/%d] %s ", i+1, len(tickets), ticketLink)
-
-		if ticket.CVEID == "" {
-			if stderrColor {
-				fmt.Fprintf(os.Stderr, "%s[%s]%s no CVE ID (%sSKIP%s). Ticket is about: %s\n",
-					colorForStatus(ticket.Status), ticket.Status, colorReset,
-					colorNull, colorReset, ticket.Summary)
-			} else {
-				fmt.Fprintf(os.Stderr, "[%s] no CVE ID (SKIP). Ticket is about: %s\n", ticket.Status, ticket.Summary)
-			}
-			continue
-		}
+		fmt.Fprintf(os.Stderr, "[%d/%d] %s ", i+1, len(cveTickets), ticketLink)
 
 		result, err := assess.Run(ctx, assess.Options{
 			TicketID: ticketID,
@@ -1117,6 +1121,7 @@ func init() {
 	scanCmd.Flags().StringVar(&scanSummaryFile, "summary-file", "", "Write aggregate summary to file")
 	scanCmd.Flags().StringVar(&scanRepoPath, "repo-path", "", "Path to operator repo (auto-detected from Jira component if omitted)")
 	scanCmd.Flags().BoolVar(&scanIncludeClosed, "include-closed", false, "Include closed tickets (historical reference)")
+	scanCmd.Flags().BoolVar(&scanIncludeBugs, "include-bugs", false, "Include Bug-type tickets (default: Vulnerability only)")
 	scanCmd.Flags().BoolVar(&scanShort, "short", false, "Print compact summary table instead of full JSON")
 	scanCmd.Flags().BoolVar(&scanDiscover, "discover", false, "Run govulncheck-only discovery (skip Jira assessment)")
 	scanCmd.Flags().StringVar(&scanSince, "since", "", "Filter tickets by creation date (e.g., 1w, 30d, 1y, or 2025-01-01)")
