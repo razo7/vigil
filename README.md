@@ -43,7 +43,7 @@ vigil assess RHWA-881
 ### Batch scan (`vigil scan`)
 
 ```
-vigil scan --component FAR --short
+vigil scan --component FAR --short --trivy
        │
        ├─ Phase 1: Jira assessment
        │    └─ For each CVE ticket → run full assess pipeline
@@ -51,10 +51,16 @@ vigil scan --component FAR --short
        ├─ Phase 2: govulncheck discovery
        │    ├─ Run govulncheck once on the operator repo
        │    ├─ Cross-reference findings against Jira tickets
-       │    └─ Flag untracked vulnerabilities (SRC=Scan)
+       │    └─ Flag untracked vulnerabilities (SRC=GVC)
        │
-       └─ Phase 3: Combined output
-            ├─ Merge Jira + discovery results (SRC: Jira/Scan/Both)
+       ├─ Phase 3: Trivy scan (--trivy)
+       │    ├─ Run trivy fs on the operator repo
+       │    ├─ Deduplicate against Jira + govulncheck findings
+       │    └─ Flag Trivy-only vulnerabilities (SRC=Trivy)
+       │
+       └─ Phase 4: Combined output
+            ├─ Merge all sources (SRC: Jira/GVC/Trivy/J+G/J+T/G+T/J+G+T)
+            ├─ Record blocked CVEs to watch registry
             └─ Sort by source → status → priority → reachability → CVSS
 ```
 
@@ -73,15 +79,18 @@ go install golang.org/x/vuln/cmd/govulncheck@latest
 # Pull pre-built image
 podman pull quay.io/oraz/vigil:latest
 
-# Or build locally
-podman build -t vigil -f Containerfile .
+# Or build locally (copies host RH CA certs for internal GitLab access)
+make docker-build
 
 # Run
 podman run --rm -t \
   -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
+  -e JIRA_EMAIL=user@redhat.com \
   -e GITLAB_PRIVATE_TOKEN=$GITLAB_PRIVATE_TOKEN \
-  quay.io/oraz/vigil:latest assess RHWA-881
+  quay.io/oraz/vigil:latest scan --component FAR --short --trivy
 ```
+
+The container image includes govulncheck, Trivy, skopeo, and git. Red Hat IT Root CA certificates are embedded at build time for `gitlab.cee.redhat.com` access.
 
 ## Usage
 
@@ -104,11 +113,11 @@ vigil assess RHWA-881 --jira
 ### Batch scan all tickets for a component
 
 ```bash
-# Short table format (default for quick overview)
-vigil scan --component FAR --short
+# Short table with all detection sources
+vigil scan --component FAR --short --trivy
 
 # Full JSON output (detailed per-ticket results)
-vigil scan --component FAR
+vigil scan --component FAR --trivy
 
 # Include closed tickets for historical reference
 vigil scan --component FAR --short --include-closed
@@ -138,6 +147,34 @@ vigil scan --component FAR --discover --repo-path /path/to/fence-agents-remediat
 ```
 
 Discovery mode runs `govulncheck` independently to find vulnerabilities that may not have Jira tickets yet. Results are cross-referenced against existing Jira tickets when a component is specified.
+
+### Check downstream Go version (`vigil check-goversion`)
+
+```bash
+# Check if FAR downstream has Go 1.25.9
+vigil check-goversion --operator FAR --want 1.25.9
+
+# Check a specific operator version
+vigil check-goversion --operator FAR --want 1.25.9 --version 0.4
+
+# Check all operators
+vigil check-goversion --want 1.25.9
+```
+
+### Watch blocked CVEs (`vigil watch`)
+
+```bash
+# One-time check for FAR blocked CVEs
+vigil watch --component FAR --once
+
+# Poll every 24 hours
+vigil watch --component FAR --interval 24h
+
+# Check all components once
+vigil watch --once
+```
+
+Watch monitors CVEs classified as "Blocked by Go" and re-checks whether the required Go version is now available in the downstream base image. Blocked CVEs are automatically recorded by `vigil scan` and `vigil assess`.
 
 ### Example output
 
@@ -198,22 +235,22 @@ Discovery mode runs `govulncheck` independently to find vulnerabilities that may
 
 ### Short table output (`--short`)
 
-Default mode combines Jira assessment with govulncheck discovery. The `SRC` column shows where each CVE was found, and source annotations on `LANG` and `PACKAGE` indicate the data origin.
+Default mode combines Jira assessment with govulncheck discovery and optionally Trivy. The `SRC` column shows which scanners found each CVE, with composite labels when multiple sources agree.
 
 ```
 SRC   TICKET             CVE              VERSION  LANG    STATUS               CLASSIFICATION   PRIORITY       PACKAGE                   CVSS REACHABILITY
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-Both  RHWA-881           CVE-2026-32283   v0.4     Go(gvc) New                  Blocked by Go    Low            crypto/tls(gvc)            7.5 TEST-ONLY (verify_test.go)
-Both  ECOPROJECT-2468    CVE-2026-25679   v0.4     Go(gvc) In Progress          Fixable Now      Critical       golang.org/x/net/html(gvc) 5.3 PACKAGE-LEVEL (pkg → x/net)
-Jira  RHWA-659           CVE-2026-24049   v0.6     Py(j)   Closed (Not a Bug)   Not Go           Manual         wheel(j)                   7.1 N/A
-Scan  -- none --         CVE-2026-99999            Go(gvc)                      Not Reachable    Low            archive/tar(gvc)           4.2 MODULE-LEVEL (go.mod only)
+J+G   RHWA-881           CVE-2026-32283   v0.4     Go(gvc) New                  Fixable Now      Critical       crypto/tls(gvc)            7.5 PACKAGE-LEVEL
+Jira  RHWA-659           CVE-2026-24049   v0.6     Py(jira) Closed (Not a Bug)  Not Go           Manual         wheel(jira)                7.1 N/A
+GVC   -- none --         CVE-2026-99999            Go(gvc)                      Not Reachable    Low            archive/tar(gvc)           4.2 MODULE-LEVEL (go.mod only)
+Trivy -- none --         CVE-2026-35469            Go(trivy)                    Not Reachable    Low            github.com/moby/spdystr... 6.5 MODULE-LEVEL (go.mod only)
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-4 assessed, 1 fixable, 1 blocked, 1 not-go, 1 discovered (no ticket)
+3 assessed, 1 fixable, 1 not-go, 1 discovered (no ticket), 1 trivy-only
 ```
 
-**SRC column**: `Jira` = Jira ticket only, `Scan` = govulncheck only (no ticket), `Both` = confirmed by both.
+**SRC column**: `Jira` = Jira only, `GVC` = govulncheck only, `Trivy` = Trivy only, `J+G` = Jira + govulncheck, `J+T` = Jira + Trivy, `G+T` = govulncheck + Trivy, `J+G+T` = all three.
 
-**Source annotations**: `(gvc)` = govulncheck, `(j)` = Jira ticket data.
+**Source annotations**: `(gvc)` = govulncheck, `(jira)` = Jira ticket data, `(trivy)` = Trivy scan.
 
 **REACHABILITY proof**: File path for REACHABLE/TEST-ONLY, `go mod why` import chain for PACKAGE-LEVEL, `(go.mod only)` for MODULE-LEVEL.
 
@@ -267,8 +304,9 @@ Terminal output is colorized when stdout is a TTY. Use `--color` to force colors
 | `JIRA_API_TOKEN` | Yes | — | Jira API token for ticket access |
 | `JIRA_EMAIL` | Yes | — | Email for Jira auth |
 | `JIRA_BASE_URL` | No | `https://redhat.atlassian.net` | Jira instance URL |
-| `GITLAB_TOKEN` or `GITLAB_PRIVATE_TOKEN` | No | — | GitLab token for downstream Containerfile access |
+| `GITLAB_TOKEN` or `GITLAB_PRIVATE_TOKEN` | No | — | GitLab token for downstream Containerfile + ARGUS skills |
 | `GITLAB_HOST` | No | `https://gitlab.cee.redhat.com` | GitLab instance URL |
+| `ANTHROPIC_API_KEY` | No | — | Claude API key for CVE preprocessing |
 
 ## Branch-specific scanning
 
@@ -281,18 +319,22 @@ When a ticket targets a specific operator version (e.g., `[far-0.4]`), vigil:
 
 ```
 vigil/
-  cmd/             # Cobra CLI commands (assess, scan, check-goversion)
+  cmd/             # Cobra CLI commands (assess, scan, check-goversion, watch)
   pkg/
+    argus/         # ARGUS ProdSec skills (GitLab fetch + cache)
     assess/        # Main pipeline orchestration
     classify/      # Deterministic classification + priority logic
     cve/           # CVSS score fetching from cve.org API
     discover/      # Independent govulncheck CVE discovery
     downstream/    # Downstream Containerfile Go version fetching
-    goversion/     # go.mod parsing + govulncheck runner
-    jira/          # Jira REST API v3 + CLI client
+    goversion/     # go.mod parsing + govulncheck runner + check-goversion
+    jira/          # Jira REST API v3 + CLI client (read + writeback)
     lifecycle/     # OCP version mapping + support phase lookup
+    preprocess/    # Claude CVE advisory preprocessor + cache
     report/        # Report formatting (Jira comment, sanitized summary)
+    trivy/         # Trivy filesystem vulnerability scanner
     types/         # Shared types
+    watch/         # Blocked CVE registry + downstream Go version monitor
 ```
 
 ## ARGUS ProdSec Skills Integration
@@ -311,22 +353,26 @@ Vigil v0.0.2 integrates with the [ARGUS ProdSec skills repository](https://gitla
 
 ## Status
 
-v0.0.1 — piloted on Fence Agents Remediation ([RHWA-922](https://redhat.atlassian.net/browse/RHWA-922)). Supports all 7 medik8s components: FAR, SNR, NHC, NMO, MDR, SBR, and NHC-CONSOLE.
+v0.0.2 — extends the triage pipeline from v0.0.1 with three detection sources, watch mode, and Jira writeback. Piloted on Fence Agents Remediation ([RHWA-922](https://redhat.atlassian.net/browse/RHWA-922)). Supports all 7 medik8s components: FAR, SNR, NHC, NMO, MDR, SBR, and NHC-CONSOLE.
 
-## Roadmap (v0.0.2)
+### What's new in v0.0.2
+
+- **Trivy** as third detection source alongside Jira + govulncheck (composite source tracking: J+G, J+T, G+T)
+- **`vigil watch`** — monitor blocked CVEs, promote when downstream Go version updates
+- **`vigil check-goversion`** — check downstream base image Go version availability
+- **Jira writeback** — transition tickets, link PRs, add labels via REST API
+- **ARGUS ProdSec skills** — fetch Go security, vulnerability management, and operator security skills from GitLab
+- **Claude CVE preprocessor** — offline advisory digestion with local caching
+- **RH CA certs** in container image for `gitlab.cee.redhat.com` TLS
+
+### Roadmap
 
 See [docs/design-v0.0.2.md](docs/design-v0.0.2.md) and [docs/plan-v0.0.2.md](docs/plan-v0.0.2.md).
 
+**Pending for v0.0.2:**
 - `vigil fix` — automated fix PRs with 4 Go patching strategies (direct → transitive → replace → major bump)
-- `vigil watch` — monitor blocked CVEs, re-check when downstream Go version updates
-- `check-goversion` — check downstream base image Go version availability
-- Trivy as third detection source alongside Jira + govulncheck
-- Jira bidirectional sync (link PRs, update ticket status)
-- ARGUS ProdSec skills in PR descriptions
-- Claude CVE preprocessor (offline advisory digestion)
 - Intelligent routing (deterministic fix vs AI-assisted workflow)
 
-### v0.0.3 Preview
-
+**v0.0.3 Preview:**
 - Snyk integration ([RHWA-632](https://redhat.atlassian.net/browse/RHWA-632))
 - Agentic mode — detection agent + fix agent running independently
