@@ -75,3 +75,11 @@ jobs:
           fi
           git tag "${IMAGE_TAG}"
           git push origin "${IMAGE_TAG}"
+
+      - name: Push milestone versioned image
+        if: ${{ github.ref_type != 'tag' && steps.milestone.outputs.is_milestone == 'true' }}
+        env:
+          IMAGE_TAG: ${{ steps.milestone.outputs.image_tag }}
+        run: |
+          docker tag quay.io/oraz/vigil:latest quay.io/oraz/vigil:${IMAGE_TAG}
+          docker push quay.io/oraz/vigil:${IMAGE_TAG}
