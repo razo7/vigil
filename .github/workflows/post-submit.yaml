@@ -81,5 +81,6 @@ jobs:
         env:
           IMAGE_TAG: ${{ steps.milestone.outputs.image_tag }}
         run: |
-          docker tag quay.io/oraz/vigil:latest quay.io/oraz/vigil:${IMAGE_TAG}
-          docker push quay.io/oraz/vigil:${IMAGE_TAG}
+          TOOL=$(command -v podman 2>/dev/null || echo docker)
+          $TOOL tag quay.io/oraz/vigil:latest quay.io/oraz/vigil:${IMAGE_TAG}
+          $TOOL push quay.io/oraz/vigil:${IMAGE_TAG}
