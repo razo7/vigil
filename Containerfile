@@ -13,6 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates skopeo && \
     rm -rf /var/lib/apt/lists/*
 
+COPY certs/ /tmp/rh-certs/
+RUN if ls /tmp/rh-certs/*.pem 1>/dev/null 2>&1; then \
+        for f in /tmp/rh-certs/*.pem; do cp "$f" "/usr/local/share/ca-certificates/$(basename "$f" .pem).crt"; done && \
+        update-ca-certificates; \
+    fi && rm -rf /tmp/rh-certs
+
 COPY --from=builder /usr/local/bin/vigil /usr/local/bin/vigil
 COPY --from=builder /go/bin/govulncheck /usr/local/bin/govulncheck
 
