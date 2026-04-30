@@ -1,0 +1,7 @@
+auth_type: basic
+installation: Cloud
+login: LOGIN_PLACEHOLDER
+server: https://redhat.atlassian.net
+project:
+    key: RHWA
+    type: ""

@@ -6,6 +6,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /usr/local/bin/vigil .
 RUN go install golang.org/x/vuln/cmd/govulncheck@latest
+RUN go install github.com/ankitpokhrel/jira-cli/cmd/jira@latest
 
 FROM debian:bookworm-slim
 
@@ -23,8 +24,13 @@ RUN if ls /tmp/rh-certs/*.pem 1>/dev/null 2>&1; then \
 
 COPY --from=builder /usr/local/bin/vigil /usr/local/bin/vigil
 COPY --from=builder /go/bin/govulncheck /usr/local/bin/govulncheck
+COPY --from=builder /go/bin/jira /usr/local/bin/jira
+COPY hack/jira-config.yml /etc/vigil/jira-config.yml
+COPY hack/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV TRIVY_CACHE_DIR=/tmp/trivy
+ENV HOME=/tmp/vigil-home
+RUN mkdir -p /tmp/vigil-home && chmod 777 /tmp/vigil-home
 USER nobody
 WORKDIR /workspace
-ENTRYPOINT ["vigil"]
+ENTRYPOINT ["entrypoint.sh"]
