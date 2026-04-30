@@ -213,6 +213,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 			Reporter:                ticket.Reporter,
 			Assignee:                ticket.Assignee,
 			DueDate:                 ticket.DueDate,
+			Created:                 ticket.Created,
 			JiraPriority:            ticket.JiraPriority,
 			Labels:                  strings.Join(ticket.Labels, ", "),
 			AffectsRHWAVersions:     strings.Join(ticket.AffectsVersions, ", "),

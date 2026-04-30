@@ -552,6 +552,7 @@ type combinedRow struct {
 	reachability   string
 	callPaths      []string
 	importChain    string
+	created        string
 }
 
 func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln) []combinedRow {
@@ -606,6 +607,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			cvss:           r.Vulnerability.Severity,
 			reachability:   shortReachability(r),
 			callPaths:      callPaths,
+			created:        r.Source.Created,
 		})
 	}
 	for _, v := range gaps {
@@ -662,16 +664,16 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
 
-	headerFmt := "%-5s %-18s %-16s %-8s %-7s %-20s %-16s %-14s %-24s %5s %s\n"
-	lineWidth := 176
+	headerFmt := "%-5s %-18s %-10s %-16s %-8s %-7s %-20s %-16s %-14s %-24s %5s %s\n"
+	lineWidth := 187
 
 	if isTTY {
 		fmt.Printf("\033[1m"+headerFmt+colorReset,
-			"SRC", "TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+			"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(headerFmt,
-			"SRC", "TICKET", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+			"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
@@ -705,6 +707,11 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			}
 		}
 
+		createdDisplay := row.created
+		if createdDisplay == "" {
+			createdDisplay = ""
+		}
+
 		if isTTY {
 			ticketDisplay := termLink(fmt.Sprintf("%-18s", row.ticket), row.ticketURL)
 			cveDisplay := termLink(fmt.Sprintf("%-16s", row.cveID), row.cveURL)
@@ -712,16 +719,16 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			prioColor := colorForPriority(row.priority)
 			statusColor := colorForStatus(row.rawStatus)
 			srcColor := colorForSource(row.src)
-			fmt.Printf("%s%-5s%s %s %s %-8s %-7s %s%-20s%s %s%-16s%s %s%-14s%s %-24s %5.1f %s\n",
+			fmt.Printf("%s%-5s%s %s %-10s %s %-8s %-7s %s%-20s%s %s%-16s%s %s%-14s%s %-24s %5.1f %s\n",
 				srcColor, row.src, colorReset,
-				ticketDisplay, cveDisplay, row.version, langDisplay,
+				ticketDisplay, createdDisplay, cveDisplay, row.version, langDisplay,
 				statusColor, row.status, colorReset,
 				classColor, class, colorReset,
 				prioColor, priority, colorReset,
 				pkgDisplay, row.cvss, reachDisplay)
 		} else {
-			fmt.Printf("%-5s %-18s %-16s %-8s %-7s %-20s %-16s %-14s %-24s %5.1f %s\n",
-				row.src, row.ticket, row.cveID, row.version, langDisplay, row.status, class, priority, pkgDisplay, row.cvss, reachDisplay)
+			fmt.Printf("%-5s %-18s %-10s %-16s %-8s %-7s %-20s %-16s %-14s %-24s %5.1f %s\n",
+				row.src, row.ticket, createdDisplay, row.cveID, row.version, langDisplay, row.status, class, priority, pkgDisplay, row.cvss, reachDisplay)
 		}
 	}
 
