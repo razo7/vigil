@@ -8,6 +8,19 @@ RUN CGO_ENABLED=0 go build -o /usr/local/bin/vigil .
 RUN go install golang.org/x/vuln/cmd/govulncheck@latest
 RUN go install github.com/ankitpokhrel/jira-cli/cmd/jira@latest
 
+# Strip Go toolchain to ~120MB (from ~500MB) for the runtime image.
+# govulncheck needs `go list` (bin/go + pkg/tool/compile) and stdlib
+# source (src/) for reachability analysis, but not cmd source, tests,
+# API compat data, or tools like cgo/cover/link.
+RUN rm -rf /usr/local/go/doc /usr/local/go/api /usr/local/go/src/cmd \
+    && find /usr/local/go/src -name '*_test.go' -delete \
+    && find /usr/local/go/src -name 'testdata' -type d -exec rm -rf {} + 2>/dev/null; true \
+    && rm -f /usr/local/go/pkg/tool/*/cover \
+             /usr/local/go/pkg/tool/*/cgo \
+             /usr/local/go/pkg/tool/*/preprofile \
+             /usr/local/go/pkg/tool/*/asm \
+             /usr/local/go/pkg/tool/*/link
+
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
