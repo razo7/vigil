@@ -33,14 +33,34 @@ jobs:
       - name: Build and push image
         run: make container-build-and-push
 
-      - name: Commit changelog if generated
+      - name: Detect milestone build
+        id: milestone
         run: |
-          if git diff --quiet -- docs/ && ! git ls-files --others --exclude-standard docs/ | grep -q .; then
-            echo "No changelog generated (not a milestone build)"
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          VERSION=$(grep '^VERSION ?=' Makefile | awk '{print $3}')
+          if [ $(( COMMIT_COUNT % 10 )) -eq 0 ] && [ "$COMMIT_COUNT" -gt 0 ]; then
+            VERSION_BASE=$(git rev-list --count "v${VERSION}" 2>/dev/null || echo "$COMMIT_COUNT")
+            COMMITS_SINCE=$(( COMMIT_COUNT - VERSION_BASE ))
+            BUILD_NUMBER=$(( COMMITS_SINCE / 10 + 1 ))
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            IMAGE_TAG="v${VERSION}-${BUILD_NUMBER}-${SHORT_SHA}"
+            echo "is_milestone=true" >> "$GITHUB_OUTPUT"
+            echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add docs/changelog-*.md
-            git commit -m "Add changelog for milestone build"
+            echo "is_milestone=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit changelog and tag milestone
+        if: steps.milestone.outputs.is_milestone == 'true'
+        env:
+          IMAGE_TAG: ${{ steps.milestone.outputs.image_tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/v*/
+          if ! git diff --cached --quiet; then
+            git commit -m "Add changelog for ${IMAGE_TAG}"
             git push
           fi
+          git tag "${IMAGE_TAG}"
+          git push origin "${IMAGE_TAG}"
