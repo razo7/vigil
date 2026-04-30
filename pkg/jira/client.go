@@ -160,7 +160,12 @@ func (c *Client) SearchTickets(jql string) ([]TicketInfo, error) {
 	return tickets, nil
 }
 
+var ErrCLINotFound = fmt.Errorf("jira CLI not found in PATH")
+
 func SearchTicketsCLI(jql string) ([]TicketInfo, error) {
+	if _, err := exec.LookPath("jira"); err != nil {
+		return nil, ErrCLINotFound
+	}
 	queries := splitMultiProjectJQL(jql)
 
 	seen := make(map[string]bool)

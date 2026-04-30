@@ -179,7 +179,9 @@ func runCombinedScan() error {
 
 	tickets, err := jira.SearchTicketsCLI(jql)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "WARNING: jira CLI search failed (%v), falling back to REST API\n", err)
+		if err != jira.ErrCLINotFound {
+			fmt.Fprintf(os.Stderr, "WARNING: jira CLI search failed (%v), falling back to REST API\n", err)
+		}
 		jiraClient, clientErr := jira.NewClient()
 		if clientErr != nil {
 			return fmt.Errorf("creating Jira client: %w", clientErr)
