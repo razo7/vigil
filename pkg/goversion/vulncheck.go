@@ -84,15 +84,28 @@ type vulncheckEvent struct {
 }
 
 func RunGovulncheck(repoPath string) (*VulncheckResult, error) {
-	return RunGovulncheckWithVersion(repoPath, "")
+	goVersion := ""
+	if goMod, err := ReadGoMod(repoPath); err == nil {
+		goVersion = goMod.EffectiveVersion()
+	}
+	return RunGovulncheckWithVersion(repoPath, goVersion)
+}
+
+func normalizeToolchainVersion(v string) string {
+	if v == "" {
+		return v
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) == 2 {
+		return v + ".0"
+	}
+	return v
 }
 
 func RunGovulncheckWithVersion(repoPath, goVersion string) (*VulncheckResult, error) {
 	cmd := exec.Command("govulncheck", "-json", "./...")
 	cmd.Dir = repoPath
-	if goVersion != "" {
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go"+goVersion)
-	}
+	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go"+normalizeToolchainVersion(goVersion))
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
