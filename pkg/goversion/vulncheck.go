@@ -102,10 +102,41 @@ func normalizeToolchainVersion(v string) string {
 	return v
 }
 
+func localGoMinor() string {
+	out, err := exec.Command("go", "env", "GOVERSION").Output()
+	if err != nil {
+		return ""
+	}
+	v := strings.TrimPrefix(strings.TrimSpace(string(out)), "go")
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) >= 2 {
+		return parts[0] + "." + parts[1]
+	}
+	return v
+}
+
+func goMinor(v string) string {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) >= 2 {
+		return parts[0] + "." + parts[1]
+	}
+	return v
+}
+
+func toolchainEnv(goVersion string) string {
+	if goVersion == "" {
+		return "GOTOOLCHAIN=local"
+	}
+	if goMinor(goVersion) == localGoMinor() {
+		return "GOTOOLCHAIN=go" + normalizeToolchainVersion(goVersion)
+	}
+	return "GOTOOLCHAIN=local"
+}
+
 func RunGovulncheckWithVersion(repoPath, goVersion string) (*VulncheckResult, error) {
 	cmd := exec.Command("govulncheck", "-json", "./...")
 	cmd.Dir = repoPath
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=go"+normalizeToolchainVersion(goVersion))
+	cmd.Env = append(os.Environ(), toolchainEnv(goVersion))
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
