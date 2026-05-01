@@ -480,22 +480,24 @@ func writeBatchSummary(path string, results []*types.Result) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+func colWidth(header string, vals []string) int {
+	w := len(header)
+	for _, v := range vals {
+		if len(v) > w {
+			w = len(v)
+		}
+	}
+	return w
+}
+
 func printDiscoverTable(disc *types.DiscoverResult) {
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 
-	headerFmt := "%-6s %-18s %-16s %-16s %-14s %-22s %5s %-14s\n"
-	lineWidth := 140
-
-	if isTTY {
-		fmt.Printf("\033[1m"+headerFmt+colorReset,
-			"SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
-		fmt.Println(strings.Repeat("─", lineWidth))
-	} else {
-		fmt.Printf(headerFmt,
-			"SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
-		fmt.Println(strings.Repeat("-", lineWidth))
+	type discRow struct {
+		src, ticket, cve, class, priority, pkg, reach string
+		cvss                                          float64
 	}
-
+	var rows []discRow
 	for _, v := range disc.Vulns {
 		ticket := v.TicketID
 		if ticket == "" {
@@ -505,11 +507,53 @@ func printDiscoverTable(disc *types.DiscoverResult) {
 		if src == "" || src == "Scan" {
 			src = "GVC"
 		}
-		cveCol := formatCVEAliases(v.CVEIDs, 16)
-		class := string(v.Classification)
-		priority := shortPriority(v.Priority)
-		pkg := shortPackage(v.Package)
+		rows = append(rows, discRow{
+			src:      src,
+			ticket:   ticket,
+			cve:      formatCVEAliases(v.CVEIDs, 0),
+			class:    string(v.Classification),
+			priority: shortPriority(v.Priority),
+			pkg:      shortPackage(v.Package),
+			cvss:     v.Severity,
+			reach:    v.Reachability,
+		})
+	}
 
+	cols := make([][]string, 8)
+	for _, r := range rows {
+		cols[0] = append(cols[0], r.src)
+		cols[1] = append(cols[1], r.ticket)
+		cols[2] = append(cols[2], r.cve)
+		cols[3] = append(cols[3], r.class)
+		cols[4] = append(cols[4], r.priority)
+		cols[5] = append(cols[5], r.pkg)
+		cols[6] = append(cols[6], fmt.Sprintf("%.1f", r.cvss))
+		cols[7] = append(cols[7], r.reach)
+	}
+	headers := []string{"SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY"}
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = colWidth(h, cols[i])
+	}
+
+	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%-%ds\n",
+		widths[0], widths[1], widths[2], widths[3], widths[4], widths[5], widths[6], widths[7])
+	lineWidth := 0
+	for _, w := range widths {
+		lineWidth += w
+	}
+	lineWidth += len(widths) - 1
+
+	if isTTY {
+		fmt.Printf("\033[1m"+fmtStr+colorReset, "SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+		fmt.Println(strings.Repeat("─", lineWidth))
+	} else {
+		fmt.Printf(fmtStr, "SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+		fmt.Println(strings.Repeat("-", lineWidth))
+	}
+
+	for i, r := range rows {
+		v := disc.Vulns[i]
 		if isTTY {
 			classColor := colorForClassification(v.Classification)
 			prioColor := colorForPriority(v.Priority)
@@ -517,16 +561,18 @@ func printDiscoverTable(disc *types.DiscoverResult) {
 			if v.HasTicket {
 				ticketColor = colorLow
 			}
-			fmt.Printf("%-6s %s%-18s%s %-16s %s%-16s%s %s%-14s%s %-22s %5.1f %-14s\n",
-				src,
-				ticketColor, ticket, colorReset,
-				cveCol,
-				classColor, class, colorReset,
-				prioColor, priority, colorReset,
-				pkg, v.Severity, v.Reachability)
+			fmt.Printf(fmt.Sprintf("%%-%ds %%s%%-%ds%%s %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%-%ds\n",
+				widths[0], widths[1], widths[2], widths[3], widths[4], widths[5], widths[6], widths[7]),
+				r.src,
+				ticketColor, r.ticket, colorReset,
+				r.cve,
+				classColor, r.class, colorReset,
+				prioColor, r.priority, colorReset,
+				r.pkg, r.cvss, r.reach)
 		} else {
-			fmt.Printf("%-6s %-18s %-16s %-16s %-14s %-22s %5.1f %-14s\n",
-				src, ticket, cveCol, class, priority, pkg, v.Severity, v.Reachability)
+			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%-%ds\n",
+				widths[0], widths[1], widths[2], widths[3], widths[4], widths[5], widths[6], widths[7]),
+				r.src, r.ticket, r.cve, r.class, r.priority, r.pkg, r.cvss, r.reach)
 		}
 	}
 
@@ -628,7 +674,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 		rows = append(rows, combinedRow{
 			src:            compositeSource("G", false, gapInTrivy),
 			ticket:         "-- none --",
-			cveID:          formatCVEAliases(v.CVEIDs, 16),
+			cveID:          formatCVEAliases(v.CVEIDs, 0),
 			version:        "",
 			lang:           "Go",
 			langSrc:        "gvc",
@@ -649,7 +695,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 		rows = append(rows, combinedRow{
 			src:            "Trivy",
 			ticket:         "-- none --",
-			cveID:          formatCVEAliases(v.CVEIDs, 16),
+			cveID:          formatCVEAliases(v.CVEIDs, 0),
 			version:        "",
 			lang:           "Go",
 			langSrc:        "trivy",
@@ -673,23 +719,19 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
 
-	headerFmt := "%-5s %-18s %-10s %-16s %-8s %-10s %-20s %-16s %-14s %-28s %5s %s\n"
-	lineWidth := 194
-
-	if isTTY {
-		fmt.Printf("\033[1m"+headerFmt+colorReset,
-			"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
-		fmt.Println(strings.Repeat("─", lineWidth))
-	} else {
-		fmt.Printf(headerFmt,
-			"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
-		fmt.Println(strings.Repeat("-", lineWidth))
+	type renderedRow struct {
+		src, ticket, ticketURL, created, cveID, cveURL string
+		version, lang, status, class, priority, pkg    string
+		cvss                                           float64
+		reach                                          string
+		rawStatus                                      string
+		classification                                 types.Classification
+		priorityVal                                    types.Priority
 	}
-
+	var rendered []renderedRow
 	counts := map[types.Classification]int{}
+
 	for _, row := range rows {
-		class := string(row.classification)
-		priority := shortPriority(row.priority)
 		counts[row.classification]++
 
 		langDisplay := row.lang
@@ -716,28 +758,86 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			}
 		}
 
-		createdDisplay := row.created
-		if createdDisplay == "" {
-			createdDisplay = ""
-		}
+		rendered = append(rendered, renderedRow{
+			src:            row.src,
+			ticket:         row.ticket,
+			ticketURL:      row.ticketURL,
+			created:        row.created,
+			cveID:          row.cveID,
+			cveURL:         row.cveURL,
+			version:        row.version,
+			lang:           langDisplay,
+			status:         row.status,
+			rawStatus:      row.rawStatus,
+			class:          string(row.classification),
+			classification: row.classification,
+			priority:       shortPriority(row.priority),
+			priorityVal:    row.priority,
+			pkg:            pkgDisplay,
+			cvss:           row.cvss,
+			reach:          reachDisplay,
+		})
+	}
 
+	headers := []string{"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY"}
+	cols := make([][]string, len(headers))
+	for _, r := range rendered {
+		cols[0] = append(cols[0], r.src)
+		cols[1] = append(cols[1], r.ticket)
+		cols[2] = append(cols[2], r.created)
+		cols[3] = append(cols[3], r.cveID)
+		cols[4] = append(cols[4], r.version)
+		cols[5] = append(cols[5], r.lang)
+		cols[6] = append(cols[6], r.status)
+		cols[7] = append(cols[7], r.class)
+		cols[8] = append(cols[8], r.priority)
+		cols[9] = append(cols[9], r.pkg)
+		cols[10] = append(cols[10], fmt.Sprintf("%.1f", r.cvss))
+		cols[11] = append(cols[11], r.reach)
+	}
+	w := make([]int, len(headers))
+	for i, h := range headers {
+		w[i] = colWidth(h, cols[i])
+	}
+
+	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%s\n",
+		w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10])
+	lineWidth := 0
+	for _, ww := range w {
+		lineWidth += ww
+	}
+	lineWidth += len(w) - 1
+
+	if isTTY {
+		fmt.Printf("\033[1m"+fmtStr+colorReset,
+			"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+		fmt.Println(strings.Repeat("─", lineWidth))
+	} else {
+		fmt.Printf(fmtStr,
+			"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+		fmt.Println(strings.Repeat("-", lineWidth))
+	}
+
+	for _, r := range rendered {
 		if isTTY {
-			ticketDisplay := termLink(fmt.Sprintf("%-18s", row.ticket), row.ticketURL)
-			cveDisplay := termLink(fmt.Sprintf("%-16s", row.cveID), row.cveURL)
-			classColor := colorForClassification(row.classification)
-			prioColor := colorForPriority(row.priority)
-			statusColor := colorForStatus(row.rawStatus)
-			srcColor := colorForSource(row.src)
-			fmt.Printf("%s%-5s%s %s %-10s %s %-8s %-10s %s%-20s%s %s%-16s%s %s%-14s%s %-28s %5.1f %s\n",
-				srcColor, row.src, colorReset,
-				ticketDisplay, createdDisplay, cveDisplay, row.version, langDisplay,
-				statusColor, row.status, colorReset,
-				classColor, class, colorReset,
-				prioColor, priority, colorReset,
-				pkgDisplay, row.cvss, reachDisplay)
+			ticketDisplay := termLink(fmt.Sprintf("%-*s", w[1], r.ticket), r.ticketURL)
+			cveDisplay := termLink(fmt.Sprintf("%-*s", w[3], r.cveID), r.cveURL)
+			classColor := colorForClassification(r.classification)
+			prioColor := colorForPriority(r.priorityVal)
+			statusColor := colorForStatus(r.rawStatus)
+			srcColor := colorForSource(r.src)
+			fmt.Printf(fmt.Sprintf("%%s%%-%ds%%s %%s %%-%ds %%s %%-%ds %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%s\n",
+				w[0], w[2], w[4], w[5], w[6], w[7], w[8], w[9], w[10]),
+				srcColor, r.src, colorReset,
+				ticketDisplay, r.created, cveDisplay, r.version, r.lang,
+				statusColor, r.status, colorReset,
+				classColor, r.class, colorReset,
+				prioColor, r.priority, colorReset,
+				r.pkg, r.cvss, r.reach)
 		} else {
-			fmt.Printf("%-5s %-18s %-10s %-16s %-8s %-10s %-20s %-16s %-14s %-28s %5.1f %s\n",
-				row.src, row.ticket, createdDisplay, row.cveID, row.version, langDisplay, row.status, class, priority, pkgDisplay, row.cvss, reachDisplay)
+			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%s\n",
+				w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10]),
+				r.src, r.ticket, r.created, r.cveID, r.version, r.lang, r.status, r.class, r.priority, r.pkg, r.cvss, r.reach)
 		}
 	}
 
