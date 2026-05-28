@@ -33,3 +33,40 @@ components:
     jira_name: "Node Remediation Console"
     operator_name: "node-remediation-console"
     repo: "github.com/medik8s/node-remediation-console"
+
+# OCP lifecycle data — dates from:
+# https://access.redhat.com/support/policy/updates/openshift_operators#platform-aligned
+# If omitted, built-in defaults are used.
+lifecycle:
+  ocp_releases:
+    - version: "4.16"
+      ga: "2024-06-27"
+      end_full_support: "2025-01-21"
+      end_maintenance: "2025-12-27"
+      eus: true
+      end_eus1: "2026-06-27"
+      end_eus2: "2027-06-27"
+    - version: "4.18"
+      ga: "2025-03-11"
+      end_full_support: "2025-09-16"
+      end_maintenance: "2026-08-25"
+      eus: true
+      end_eus1: "2027-02-25"
+      end_eus2: "2028-02-25"
+    - version: "4.21"
+      ga: "2026-03-25"
+      end_full_support: "2026-10-25"
+      end_maintenance: "2027-09-25"
+
+  operator_mappings:
+    fence-agents-remediation:
+      - operator_version: "0.6"
+        ocp_versions: ["4.16", "4.17", "4.18", "4.19", "4.20"]
+      - operator_version: "0.7"
+        ocp_versions: ["4.21"]
+
+  rhwa_to_ocp:
+    rhwa-25.1: "4.18"
+    rhwa-25.2: "4.19"
+    rhwa-25.3: "4.20"
+    rhwa-26.1: "4.21"

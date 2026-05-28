@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/razo7/vigil/pkg/config"
+	"github.com/razo7/vigil/pkg/lifecycle"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +32,7 @@ or misassigned.`,
 		} else {
 			appConfig = config.Default()
 		}
-		return nil
+		return applyLifecycleConfig(appConfig)
 	},
 }
 
@@ -60,4 +61,17 @@ func getConfig() *config.Config {
 	}
 	appConfig = config.Default()
 	return appConfig
+}
+
+func applyLifecycleConfig(cfg *config.Config) error {
+	if len(cfg.Lifecycle.OCPReleases) == 0 && len(cfg.Lifecycle.OperatorMappings) == 0 && len(cfg.Lifecycle.RHWAToOCP) == 0 {
+		return nil
+	}
+
+	releases, mappings, rhwa, err := lifecycle.ConfigFromYAML(cfg.Lifecycle)
+	if err != nil {
+		return fmt.Errorf("parsing lifecycle config: %w", err)
+	}
+	lifecycle.SetConfig(releases, mappings, rhwa)
+	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/razo7/vigil/pkg/config"
 	"github.com/razo7/vigil/pkg/types"
 )
 
@@ -308,4 +309,79 @@ func normalizeVersion(v string) string {
 
 func date(year int, month time.Month, day int) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+func SetConfig(releases []OCPRelease, mappings map[string][]OperatorOCPMapping, rhwa map[string]string) {
+	ocpReleases = releases
+	operatorMappings = mappings
+	rhwaToOCP = rhwa
+}
+
+func ConfigFromYAML(cfg config.LifecycleConfig) ([]OCPRelease, map[string][]OperatorOCPMapping, map[string]string, error) {
+	releases, err := parseOCPReleases(cfg.OCPReleases)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	mappings := make(map[string][]OperatorOCPMapping, len(cfg.OperatorMappings))
+	for name, cfgMappings := range cfg.OperatorMappings {
+		converted := make([]OperatorOCPMapping, len(cfgMappings))
+		for i, m := range cfgMappings {
+			converted[i] = OperatorOCPMapping{
+				OperatorVersion: m.OperatorVersion,
+				OCPVersions:     m.OCPVersions,
+			}
+		}
+		mappings[name] = converted
+	}
+
+	return releases, mappings, cfg.RHWAToOCP, nil
+}
+
+func parseOCPReleases(cfgReleases []config.OCPReleaseConfig) ([]OCPRelease, error) {
+	releases := make([]OCPRelease, len(cfgReleases))
+	for i, cr := range cfgReleases {
+		ga, err := parseDate(cr.GA)
+		if err != nil {
+			return nil, fmt.Errorf("release %s ga: %w", cr.Version, err)
+		}
+		endFull, err := parseDate(cr.EndFullSupport)
+		if err != nil {
+			return nil, fmt.Errorf("release %s end_full_support: %w", cr.Version, err)
+		}
+		endMaint, err := parseDate(cr.EndMaintenance)
+		if err != nil {
+			return nil, fmt.Errorf("release %s end_maintenance: %w", cr.Version, err)
+		}
+
+		r := OCPRelease{
+			Version:        cr.Version,
+			GA:             ga,
+			EndFullSupport: endFull,
+			EndMaintenance: endMaint,
+			EUS:            cr.EUS,
+		}
+
+		if cr.EndEUS1 != "" {
+			eus1, err := parseDate(cr.EndEUS1)
+			if err != nil {
+				return nil, fmt.Errorf("release %s end_eus1: %w", cr.Version, err)
+			}
+			r.EndEUS1 = eus1
+		}
+		if cr.EndEUS2 != "" {
+			eus2, err := parseDate(cr.EndEUS2)
+			if err != nil {
+				return nil, fmt.Errorf("release %s end_eus2: %w", cr.Version, err)
+			}
+			r.EndEUS2 = eus2
+		}
+
+		releases[i] = r
+	}
+	return releases, nil
+}
+
+func parseDate(s string) (time.Time, error) {
+	return time.Parse(dateFmt, s)
 }
