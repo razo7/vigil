@@ -17,6 +17,7 @@ var (
 	assessRepoPath    string
 	assessFix         bool
 	assessCommit      string
+	assessGoVersion   string
 )
 
 var assessCmd = &cobra.Command{
@@ -29,9 +30,10 @@ analysis, check downstream base image compatibility, and classify the CVE.`,
 		ticketID := args[0]
 
 		result, err := assess.Run(cmd.Context(), assess.Options{
-			TicketID: ticketID,
-			RepoPath: assessRepoPath,
-			Commit:   assessCommit,
+			TicketID:            ticketID,
+			RepoPath:            assessRepoPath,
+			Commit:              assessCommit,
+			DownstreamGoVersion: assessGoVersion,
 		})
 		if err != nil {
 			return fmt.Errorf("assessment failed: %w", err)
@@ -87,5 +89,6 @@ func init() {
 	assessCmd.Flags().StringVar(&assessRepoPath, "repo-path", "", "Path to operator repo (auto-detected from Jira component if omitted)")
 	assessCmd.Flags().BoolVar(&assessFix, "fix", false, "Auto-fix if classified as Fixable Now")
 	assessCmd.Flags().StringVar(&assessCommit, "commit", "", "Pin repo checkout to a specific commit SHA")
+	assessCmd.Flags().StringVar(&assessGoVersion, "go-version", "", "Downstream Go version (skips GitLab Containerfile fetch)")
 	rootCmd.AddCommand(assessCmd)
 }

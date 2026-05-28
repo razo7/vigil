@@ -101,11 +101,17 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	}
 
 	downstreamGo := currentGo
-	dsInfo, err := downstream.FetchGoVersionForOperator(operatorName, ticket.ImageName, ticket.OperatorVersion)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "WARNING: downstream Go version not available: %v\n", err)
-	} else if dsInfo.GoVersion != "" {
-		downstreamGo = dsInfo.GoVersion
+	var dsInfo *downstream.ContainerfileInfo
+	if opts.DownstreamGoVersion != "" {
+		downstreamGo = opts.DownstreamGoVersion
+	} else {
+		var err error
+		dsInfo, err = downstream.FetchGoVersionForOperator(operatorName, ticket.ImageName, ticket.OperatorVersion)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: downstream Go version not available: %v\n", err)
+		} else if dsInfo.GoVersion != "" {
+			downstreamGo = dsInfo.GoVersion
+		}
 	}
 
 	var dsComponent *downstream.DownstreamComponent

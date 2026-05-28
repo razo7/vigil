@@ -33,6 +33,7 @@ var (
 	scanFix           bool
 	scanIncludeBugs   bool
 	scanCommit        string
+	scanGoVersion     string
 )
 
 func loadComponentMap() map[string]string {
@@ -237,9 +238,10 @@ func runCombinedScan() error {
 		}
 
 		result, err := assess.Run(ctx, assess.Options{
-			TicketID: ticketID,
-			RepoPath: scanRepoPath,
-			Commit:   scanCommit,
+			TicketID:            ticketID,
+			RepoPath:            scanRepoPath,
+			Commit:              scanCommit,
+			DownstreamGoVersion: scanGoVersion,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
@@ -1254,5 +1256,6 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanTrivy, "trivy", true, "Run Trivy vulnerability scan (use --trivy=false to disable)")
 	scanCmd.Flags().BoolVar(&scanFix, "fix", false, "Auto-fix Fixable Now tickets (use with --dry-run for preview)")
 	scanCmd.Flags().StringVar(&scanCommit, "commit", "", "Pin repo checkout to a specific commit SHA")
+	scanCmd.Flags().StringVar(&scanGoVersion, "go-version", "", "Downstream Go version (skips GitLab Containerfile fetch)")
 	rootCmd.AddCommand(scanCmd)
 }
