@@ -66,84 +66,93 @@ vigil scan --component FAR --short
             └─ Sort by source → status → priority → reachability → CVSS
 ```
 
-## Install
+## Quick start (container — recommended)
+
+The container image is the preferred way to run Vigil. It bundles the exact Go toolchain, govulncheck, Trivy, jira CLI, skopeo, and git — ensuring deterministic, reproducible results across all users and environments.
 
 ```bash
-go install github.com/razo7/vigil@latest
-
-# Requires govulncheck
-go install golang.org/x/vuln/cmd/govulncheck@latest
-```
-
-### Container
-
-```bash
-# Pull pre-built image
 podman pull quay.io/oraz/vigil:latest
 
-# Or build locally (copies host RH CA certs for internal GitLab access)
-make docker-build
-
-# Run
+# Scan a component
 podman run --rm -t \
   -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
-  -e JIRA_EMAIL=user@redhat.com \
+  -e JIRA_EMAIL=$JIRA_EMAIL \
   -e GITLAB_PRIVATE_TOKEN=$GITLAB_PRIVATE_TOKEN \
   quay.io/oraz/vigil:latest scan --component FAR --short
+
+# Assess a single ticket
+podman run --rm -t \
+  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
+  -e JIRA_EMAIL=$JIRA_EMAIL \
+  -e GITLAB_PRIVATE_TOKEN=$GITLAB_PRIVATE_TOKEN \
+  quay.io/oraz/vigil:latest assess RHWA-881
+
+# With a custom config file
+podman run --rm -t \
+  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
+  -e JIRA_EMAIL=$JIRA_EMAIL \
+  -v ./my-vigil.yaml:/config.yaml:ro \
+  quay.io/oraz/vigil:latest scan --component myop --config /config.yaml --short
 ```
 
-The container image includes the Go toolchain (stripped for size), govulncheck, Trivy, jira CLI, skopeo, and git. Red Hat IT Root CA certificates are embedded for `gitlab.cee.redhat.com` access. The jira CLI is auto-configured at startup from `JIRA_EMAIL`.
+Red Hat IT Root CA certificates are embedded for `gitlab.cee.redhat.com` access. The jira CLI is auto-configured at startup from `JIRA_EMAIL`.
+
+### Build the container locally
+
+```bash
+make docker-build
+```
+
+### Install from source (advanced)
+
+Only needed for development. You must separately install govulncheck, Trivy, and skopeo.
+
+```bash
+make install
+```
 
 ## Usage
+
+All examples below use `vigil` as shorthand. In production, prefer the container form:
+
+```bash
+alias vigil='podman run --rm -t \
+  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
+  -e JIRA_EMAIL=$JIRA_EMAIL \
+  -e GITLAB_PRIVATE_TOKEN=$GITLAB_PRIVATE_TOKEN \
+  quay.io/oraz/vigil:latest'
+```
 
 ### Assess a single ticket
 
 ```bash
-# Auto-detect repo from ticket component
 vigil assess RHWA-881
-
-# Use local repo
-vigil assess RHWA-881 --repo-path /path/to/fence-agents-remediation
-
-# Use remote repo
-vigil assess RHWA-881 --repo-path https://github.com/medik8s/fence-agents-remediation.git
-
-# Post result as Jira comment
-vigil assess RHWA-881 --jira
+vigil assess RHWA-881 --jira              # post result as Jira comment
+vigil assess RHWA-881 --commit abc1234    # pin to specific commit
 ```
 
 ### Batch scan all tickets for a component
 
 ```bash
-# Short table (Jira + govulncheck + Trivy, all enabled by default)
 vigil scan --component FAR --short
-
-# Full JSON output (detailed per-ticket results)
-vigil scan --component FAR
-
-# Include closed tickets for historical reference
-vigil scan --component FAR --short --include-closed
-
-# Include non-CVE Bug tickets (default: CVE tickets only)
-vigil scan --component FAR --short --include-bugs
-
-# Auto-fix Fixable Now tickets (creates PRs)
-vigil scan --component FAR --fix
-vigil scan --component FAR --fix --dry-run
-
-# Filter by time range (last week, 30 days, 1 year, or specific date)
-vigil scan --component FAR --short --since 1w
-vigil scan --component FAR --short --since 30d
-vigil scan --component FAR --short --since 1y
-vigil scan --component FAR --short --include-closed --since 2025-01-01
-
-# Post results to Jira and write aggregate summary
+vigil scan --component FAR --short --include-closed   # include closed tickets
+vigil scan --component FAR --short --include-bugs      # include non-CVE bugs
+vigil scan --component FAR --short --since 1w          # last week only
+vigil scan --component FAR --short --commit abc1234    # pin to specific commit
+vigil scan --component FAR --fix                       # auto-fix Fixable Now
+vigil scan --component FAR --fix --dry-run             # preview fixes
 vigil scan --component FAR --jira --summary-file vigil-summary.json
 ```
 
-Supported components: `FAR`, `SNR`, `NHC`, `NMO`, `MDR`, `SBR`, `NHC-CONSOLE`.
+### Custom Jira instance
 
-Scan queries both RHWA and ECOPROJECT Jira projects for CVE tickets matching the component.
+```bash
+vigil scan --component myop --config my-vigil.yaml --short
+```
+
+Where `my-vigil.yaml` defines your Jira projects and components (see `rhwa_jira_example.yaml`).
+
+Supported components (default config): `FAR`, `SNR`, `NHC`, `NMO`, `MDR`, `SBR`, `NHC-CONSOLE`.
 
 ### Discover-only mode (govulncheck)
 

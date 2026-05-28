@@ -16,6 +16,11 @@ CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || echo docker)
 build: ## Build the vigil binary
 	CGO_ENABLED=0 go build -o bin/vigil .
 
+.PHONY: install
+install: ## Install vigil and govulncheck from source (advanced — prefer container)
+	go install github.com/razo7/vigil@latest
+	go install golang.org/x/vuln/cmd/govulncheck@latest
+
 .PHONY: test
 test: ## Run unit tests
 	go test ./... -count=1
