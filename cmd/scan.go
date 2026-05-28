@@ -32,16 +32,11 @@ var (
 	scanTrivy         bool
 	scanFix           bool
 	scanIncludeBugs   bool
+	scanCommit        string
 )
 
-var componentMap = map[string]string{
-	"far":         "Fence Agents Remediation",
-	"snr":         "Self Node Remediation",
-	"nhc":         "Node Healthcheck",
-	"nmo":         "Node Maintenance Operator",
-	"mdr":         "Machine Deletion Remediation",
-	"sbr":         "Storage-based Remediation",
-	"nhc-console": "Node Remediation Console",
+func loadComponentMap() map[string]string {
+	return getConfig().ComponentMap()
 }
 
 func buildComponentJQL(component string) string {
@@ -81,7 +76,7 @@ func runDiscoverOnly() error {
 	var repoCleanup func()
 	if repoPath == "" && scanComponent != "" {
 		var resolveErr error
-		repoPath, repoCleanup, resolveErr = discover.ResolveComponentRepo(scanComponent)
+		repoPath, repoCleanup, resolveErr = discover.ResolveComponentRepo(scanComponent, loadComponentMap())
 		if resolveErr != nil {
 			return fmt.Errorf("resolving repo for %s: %w", scanComponent, resolveErr)
 		}
@@ -92,10 +87,11 @@ func runDiscoverOnly() error {
 
 	ctx := context.Background()
 	discResult, err := discover.Run(ctx, discover.Options{
-		RepoPath:  repoPath,
-		Component: scanComponent,
-		JQL:       scanJQL,
-		Since:     scanSince,
+		RepoPath:     repoPath,
+		Component:    scanComponent,
+		JQL:          scanJQL,
+		Since:        scanSince,
+		ComponentMap: loadComponentMap(),
 	})
 	if err != nil {
 		return fmt.Errorf("running discovery: %w", err)
@@ -172,7 +168,7 @@ func runCombinedScan() error {
 	jql := scanJQL
 	if jql == "" {
 		key := strings.ToLower(scanComponent)
-		fullName, ok := componentMap[key]
+		fullName, ok := loadComponentMap()[key]
 		if !ok {
 			return fmt.Errorf("unknown component %q; use --jql for custom queries", scanComponent)
 		}
@@ -242,6 +238,7 @@ func runCombinedScan() error {
 		result, err := assess.Run(ctx, assess.Options{
 			TicketID: ticketID,
 			RepoPath: scanRepoPath,
+			Commit:   scanCommit,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
@@ -291,7 +288,7 @@ func runCombinedScan() error {
 	var repoCleanup func()
 	if repoPath == "" && scanComponent != "" {
 		var resolveErr error
-		repoPath, repoCleanup, resolveErr = discover.ResolveComponentRepo(scanComponent)
+		repoPath, repoCleanup, resolveErr = discover.ResolveComponentRepo(scanComponent, loadComponentMap())
 		if resolveErr != nil {
 			fmt.Fprintf(os.Stderr, "WARNING: could not resolve repo for %s: %v\n", scanComponent, resolveErr)
 		}
@@ -302,10 +299,11 @@ func runCombinedScan() error {
 
 	fmt.Fprintf(os.Stderr, "\nRunning govulncheck discovery...\n")
 	discResult, err := discover.Run(ctx, discover.Options{
-		RepoPath:  repoPath,
-		Component: scanComponent,
-		JQL:       jql,
-		Since:     scanSince,
+		RepoPath:     repoPath,
+		Component:    scanComponent,
+		JQL:          jql,
+		Since:        scanSince,
+		ComponentMap: loadComponentMap(),
 	})
 
 	var discoveredGaps []types.DiscoveredVuln
@@ -606,6 +604,7 @@ type combinedRow struct {
 	callPaths      []string
 	importChain    string
 	created        string
+	updated        string
 }
 
 func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln) []combinedRow {
@@ -661,6 +660,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			reachability:   shortReachability(r),
 			callPaths:      callPaths,
 			created:        r.Source.Created,
+			updated:        r.Source.Updated,
 		})
 	}
 	for _, v := range gaps {
@@ -720,13 +720,13 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
 
 	type renderedRow struct {
-		src, ticket, ticketURL, created, cveID, cveURL string
-		version, lang, status, class, priority, pkg    string
-		cvss                                           float64
-		reach                                          string
-		rawStatus                                      string
-		classification                                 types.Classification
-		priorityVal                                    types.Priority
+		src, ticket, ticketURL, created, updated, cveID, cveURL string
+		version, lang, status, class, priority, pkg             string
+		cvss                                                    float64
+		reach                                                   string
+		rawStatus                                               string
+		classification                                          types.Classification
+		priorityVal                                              types.Priority
 	}
 	var rendered []renderedRow
 	counts := map[types.Classification]int{}
@@ -763,6 +763,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			ticket:         row.ticket,
 			ticketURL:      row.ticketURL,
 			created:        row.created,
+			updated:        row.updated,
 			cveID:          row.cveID,
 			cveURL:         row.cveURL,
 			version:        row.version,
@@ -779,29 +780,30 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		})
 	}
 
-	headers := []string{"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY"}
+	headers := []string{"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY"}
 	cols := make([][]string, len(headers))
 	for _, r := range rendered {
 		cols[0] = append(cols[0], r.src)
 		cols[1] = append(cols[1], r.ticket)
 		cols[2] = append(cols[2], r.created)
-		cols[3] = append(cols[3], r.cveID)
-		cols[4] = append(cols[4], r.version)
-		cols[5] = append(cols[5], r.lang)
-		cols[6] = append(cols[6], r.status)
-		cols[7] = append(cols[7], r.class)
-		cols[8] = append(cols[8], r.priority)
-		cols[9] = append(cols[9], r.pkg)
-		cols[10] = append(cols[10], fmt.Sprintf("%.1f", r.cvss))
-		cols[11] = append(cols[11], r.reach)
+		cols[3] = append(cols[3], r.updated)
+		cols[4] = append(cols[4], r.cveID)
+		cols[5] = append(cols[5], r.version)
+		cols[6] = append(cols[6], r.lang)
+		cols[7] = append(cols[7], r.status)
+		cols[8] = append(cols[8], r.class)
+		cols[9] = append(cols[9], r.priority)
+		cols[10] = append(cols[10], r.pkg)
+		cols[11] = append(cols[11], fmt.Sprintf("%.1f", r.cvss))
+		cols[12] = append(cols[12], r.reach)
 	}
 	w := make([]int, len(headers))
 	for i, h := range headers {
 		w[i] = colWidth(h, cols[i])
 	}
 
-	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%s\n",
-		w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10])
+	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%s\n",
+		w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11])
 	lineWidth := 0
 	for _, ww := range w {
 		lineWidth += ww
@@ -810,34 +812,34 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 
 	if isTTY {
 		fmt.Printf("\033[1m"+fmtStr+colorReset,
-			"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+			"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(fmtStr,
-			"SRC", "TICKET", "CREATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+			"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
 	for _, r := range rendered {
 		if isTTY {
 			ticketDisplay := termLink(fmt.Sprintf("%-*s", w[1], r.ticket), r.ticketURL)
-			cveDisplay := termLink(fmt.Sprintf("%-*s", w[3], r.cveID), r.cveURL)
+			cveDisplay := termLink(fmt.Sprintf("%-*s", w[4], r.cveID), r.cveURL)
 			classColor := colorForClassification(r.classification)
 			prioColor := colorForPriority(r.priorityVal)
 			statusColor := colorForStatus(r.rawStatus)
 			srcColor := colorForSource(r.src)
-			fmt.Printf(fmt.Sprintf("%%s%%-%ds%%s %%s %%-%ds %%s %%-%ds %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%s\n",
-				w[0], w[2], w[4], w[5], w[6], w[7], w[8], w[9], w[10]),
+			fmt.Printf(fmt.Sprintf("%%s%%-%ds%%s %%s %%-%ds %%-%ds %%s %%-%ds %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%s\n",
+				w[0], w[2], w[3], w[5], w[6], w[7], w[8], w[9], w[10], w[11]),
 				srcColor, r.src, colorReset,
-				ticketDisplay, r.created, cveDisplay, r.version, r.lang,
+				ticketDisplay, r.created, r.updated, cveDisplay, r.version, r.lang,
 				statusColor, r.status, colorReset,
 				classColor, r.class, colorReset,
 				prioColor, r.priority, colorReset,
 				r.pkg, r.cvss, r.reach)
 		} else {
-			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%s\n",
-				w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10]),
-				r.src, r.ticket, r.created, r.cveID, r.version, r.lang, r.status, r.class, r.priority, r.pkg, r.cvss, r.reach)
+			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%s\n",
+				w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11]),
+				r.src, r.ticket, r.created, r.updated, r.cveID, r.version, r.lang, r.status, r.class, r.priority, r.pkg, r.cvss, r.reach)
 		}
 	}
 
@@ -1249,5 +1251,6 @@ func init() {
 	scanCmd.Flags().StringVar(&scanSince, "since", "", "Filter tickets by creation date (e.g., 1w, 30d, 1y, or 2025-01-01)")
 	scanCmd.Flags().BoolVar(&scanTrivy, "trivy", true, "Run Trivy vulnerability scan (use --trivy=false to disable)")
 	scanCmd.Flags().BoolVar(&scanFix, "fix", false, "Auto-fix Fixable Now tickets (use with --dry-run for preview)")
+	scanCmd.Flags().StringVar(&scanCommit, "commit", "", "Pin repo checkout to a specific commit SHA")
 	rootCmd.AddCommand(scanCmd)
 }

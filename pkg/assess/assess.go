@@ -64,11 +64,17 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	}
 	repoPath, _ = filepath.Abs(repoPath)
 
+	if opts.Commit != "" {
+		if err := CheckoutCommit(repoPath, opts.Commit); err != nil {
+			return nil, fmt.Errorf("pinning to commit: %w", err)
+		}
+	}
+
 	scanPath := repoPath
 	usedWorktree := false
 	var worktreeCleanup func()
 
-	if ticket.OperatorVersion != "" {
+	if opts.Commit == "" && ticket.OperatorVersion != "" {
 		branch := goversion.ReleaseBranch(ticket.OperatorVersion)
 		if goversion.HasBranch(repoPath, branch) {
 			wt, cleanup, err := goversion.CreateWorktree(repoPath, branch)
@@ -214,6 +220,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 			Assignee:                ticket.Assignee,
 			DueDate:                 ticket.DueDate,
 			Created:                 ticket.Created,
+			Updated:                 ticket.Updated,
 			JiraPriority:            ticket.JiraPriority,
 			Labels:                  strings.Join(ticket.Labels, ", "),
 			AffectsRHWAVersions:     strings.Join(ticket.AffectsVersions, ", "),

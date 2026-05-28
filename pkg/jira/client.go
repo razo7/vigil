@@ -80,6 +80,7 @@ type TicketInfo struct {
 	Assignee              string
 	DueDate               string
 	Created               string
+	Updated               string
 	JiraPriority          string
 }
 
@@ -117,7 +118,7 @@ func (c *Client) FetchTicket(ticketID string) (*TicketInfo, error) {
 }
 
 func (c *Client) SearchTickets(jql string) ([]TicketInfo, error) {
-	url := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=50&fields=key,summary,status,resolution,components,fixVersions,versions,labels,description,reporter,assignee,duedate,created,priority,customfield_10667",
+	url := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=50&fields=key,summary,status,resolution,components,fixVersions,versions,labels,description,reporter,assignee,duedate,created,updated,priority,customfield_10667",
 		c.baseURL, encode(jql))
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -332,6 +333,11 @@ func parseTicket(raw map[string]interface{}) (*TicketInfo, error) {
 	if created := getString(fields, "created"); created != "" {
 		if len(created) >= 10 {
 			info.Created = created[:10]
+		}
+	}
+	if updated := getString(fields, "updated"); updated != "" {
+		if len(updated) >= 10 {
+			info.Updated = updated[:10]
 		}
 	}
 	info.JiraPriority = getNestedString(fields, "priority", "name")

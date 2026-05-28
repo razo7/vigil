@@ -45,6 +45,7 @@ type SourceInfo struct {
 	Assignee                string   `json:"assignee,omitempty"`
 	DueDate                 string   `json:"due_date,omitempty"`
 	Created                 string   `json:"created,omitempty"`
+	Updated                 string   `json:"updated,omitempty"`
 	JiraPriority            string   `json:"jira_priority,omitempty"`
 	Labels                  string   `json:"labels,omitempty"`
 	AffectsRHWAVersions     string   `json:"affects_rhwa_versions,omitempty"`
