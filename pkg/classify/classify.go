@@ -33,6 +33,10 @@ func Classify(in Input) (types.Classification, types.Priority, string) {
 		return types.NotReachable, types.PriorityLow, ""
 	}
 
+	if in.FixFunctionMismatch && !in.IsReachable {
+		return types.NotReachable, types.PriorityLow, "fix functions not called by operator"
+	}
+
 	if in.FixGoVersion != "" && in.DownstreamGo != "" {
 		if CompareVersions(in.FixGoVersion, in.DownstreamGo) > 0 {
 			return types.BlockedByGo, blockedPriority(in.IsReachable, in.CVSS, in.SupportPhase), ""

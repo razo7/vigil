@@ -249,6 +249,49 @@ func TestClassify_ModuleFixable(t *testing.T) {
 	}
 }
 
+func TestClassify_FixFunctionMismatch_NotReachable(t *testing.T) {
+	in := Input{
+		IsGoVuln:            true,
+		IsReachable:         false,
+		IsPackageLevel:      true,
+		FixFunctionMismatch: true,
+		FixGoVersion:        "1.25.5",
+		CurrentGo:           "1.25.3",
+		DownstreamGo:        "1.25.6",
+		CVSS:                7.5,
+		SupportPhase:        types.PhaseGA,
+	}
+
+	class, priority, reason := Classify(in)
+	if class != types.NotReachable {
+		t.Errorf("expected not-reachable when fix functions not called, got %s", class)
+	}
+	if priority != types.PriorityLow {
+		t.Errorf("expected Low, got %s", priority)
+	}
+	if reason == "" {
+		t.Error("expected reason explaining function mismatch")
+	}
+}
+
+func TestClassify_FixFunctionMismatch_ButReachable(t *testing.T) {
+	in := Input{
+		IsGoVuln:            true,
+		IsReachable:         true,
+		FixFunctionMismatch: true,
+		FixGoVersion:        "1.25.5",
+		CurrentGo:           "1.25.3",
+		DownstreamGo:        "1.25.6",
+		CVSS:                7.5,
+		SupportPhase:        types.PhaseGA,
+	}
+
+	class, _, _ := Classify(in)
+	if class != types.FixableNow {
+		t.Errorf("reachable CVE should stay fixable even with function mismatch, got %s", class)
+	}
+}
+
 func TestDeterminePriority(t *testing.T) {
 	tests := []struct {
 		name     string
