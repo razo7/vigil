@@ -48,25 +48,20 @@ var checkGoVersionCmd = &cobra.Command{
 	},
 }
 
-var operatorNames = map[string]string{
-	"FAR":         "fence-agents-remediation",
-	"SNR":         "self-node-remediation",
-	"NHC":         "node-healthcheck-operator",
-	"NMO":         "node-maintenance-operator",
-	"MDR":         "machine-deletion-remediation",
-	"SBR":         "storage-based-remediation",
-	"NHC-CONSOLE": "node-remediation-console",
+func loadOperatorNames() map[string]string {
+	return getConfig().OperatorNames()
 }
 
 func resolveOperators(shortName string) []string {
+	opNames := loadOperatorNames()
 	if shortName == "" {
-		all := make([]string, 0, len(operatorNames))
-		for _, v := range operatorNames {
+		all := make([]string, 0, len(opNames))
+		for _, v := range opNames {
 			all = append(all, v)
 		}
 		return all
 	}
-	if full, ok := operatorNames[shortName]; ok {
+	if full, ok := opNames[shortName]; ok {
 		return []string{full}
 	}
 	return []string{shortName}

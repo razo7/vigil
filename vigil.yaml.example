@@ -1,0 +1,29 @@
+components:
+  far:
+    jira_name: "Fence Agents Remediation"
+    operator_name: "fence-agents-remediation"
+    repo: "github.com/medik8s/fence-agents-remediation"
+  snr:
+    jira_name: "Self Node Remediation"
+    operator_name: "self-node-remediation"
+    repo: "github.com/medik8s/self-node-remediation"
+  nhc:
+    jira_name: "Node Healthcheck"
+    operator_name: "node-healthcheck-operator"
+    repo: "github.com/medik8s/node-healthcheck-operator"
+  nmo:
+    jira_name: "Node Maintenance Operator"
+    operator_name: "node-maintenance-operator"
+    repo: "github.com/medik8s/node-maintenance-operator"
+  mdr:
+    jira_name: "Machine Deletion Remediation"
+    operator_name: "machine-deletion-remediation"
+    repo: "github.com/medik8s/machine-deletion-remediation"
+  sbr:
+    jira_name: "Storage-based Remediation"
+    operator_name: "storage-based-remediation"
+    repo: "github.com/medik8s/storage-based-remediation"
+  nhc-console:
+    jira_name: "Node Remediation Console"
+    operator_name: "node-remediation-console"
+    repo: "github.com/medik8s/node-remediation-console"

@@ -48,7 +48,7 @@ Use 'vigil scan' or 'vigil assess' to populate it automatically.`,
 
 func runWatch(ctx context.Context) error {
 	operatorName := ""
-	if full, ok := operatorNames[strings.ToUpper(watchComponent)]; ok {
+	if full, ok := loadOperatorNames()[strings.ToUpper(watchComponent)]; ok {
 		operatorName = full
 	} else {
 		operatorName = strings.ToLower(watchComponent)
@@ -99,7 +99,7 @@ func runWatchAll() error {
 	ctx := context.Background()
 	var allPromoted []watch.PromotedCVE
 
-	for short, full := range operatorNames {
+	for short, full := range loadOperatorNames() {
 		opts := watch.Options{
 			Component:    short,
 			RegistryDir:  watchRegistryDir,

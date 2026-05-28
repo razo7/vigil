@@ -19,26 +19,34 @@ import (
 )
 
 type Options struct {
-	RepoPath  string
-	Component string
-	JQL       string
-	Since     string
+	RepoPath     string
+	Component    string
+	JQL          string
+	Since        string
+	ComponentMap map[string]string
 }
 
-var componentFullName = map[string]string{
-	"far": "Fence Agents Remediation",
-	"snr": "Self Node Remediation",
-	"nhc": "Node Healthcheck",
-	"nmo": "Node Maintenance Operator",
-	"mdr": "Machine Deletion Remediation",
+var defaultComponentMap = map[string]string{
+	"far":         "Fence Agents Remediation",
+	"snr":         "Self Node Remediation",
+	"nhc":         "Node Healthcheck",
+	"nmo":         "Node Maintenance Operator",
+	"mdr":         "Machine Deletion Remediation",
 	"sbr":         "Storage-based Remediation",
 	"nhc-console": "Node Remediation Console",
+}
+
+func (o Options) resolveComponentMap() map[string]string {
+	if o.ComponentMap != nil {
+		return o.ComponentMap
+	}
+	return defaultComponentMap
 }
 
 func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 	repoPath := opts.RepoPath
 	if repoPath == "" {
-		fullName, ok := componentFullName[strings.ToLower(opts.Component)]
+		fullName, ok := opts.resolveComponentMap()[strings.ToLower(opts.Component)]
 		if !ok {
 			return nil, fmt.Errorf("unknown component %q; provide --repo-path", opts.Component)
 		}
@@ -171,7 +179,7 @@ func buildTicketMap(opts Options) map[string]*jira.TicketInfo {
 	jql := opts.JQL
 	if jql == "" {
 		key := strings.ToLower(opts.Component)
-		fullName, ok := componentFullName[key]
+		fullName, ok := opts.resolveComponentMap()[key]
 		if !ok {
 			return nil
 		}
@@ -227,8 +235,12 @@ func injectSinceClause(jql, since string) string {
 	return jql + clause
 }
 
-func ResolveComponentRepo(component string) (string, func(), error) {
-	fullName, ok := componentFullName[strings.ToLower(component)]
+func ResolveComponentRepo(component string, componentMap ...map[string]string) (string, func(), error) {
+	cmap := defaultComponentMap
+	if len(componentMap) > 0 && componentMap[0] != nil {
+		cmap = componentMap[0]
+	}
+	fullName, ok := cmap[strings.ToLower(component)]
 	if !ok {
 		return "", nil, fmt.Errorf("unknown component %q", component)
 	}
