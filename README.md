@@ -330,7 +330,8 @@ When a ticket targets a specific operator version (e.g., `[far-0.4]`), vigil:
 vigil/
   cmd/             # Cobra CLI commands (assess, scan, check-goversion, watch)
   pkg/
-    argus/         # ARGUS ProdSec skills (GitLab fetch + cache)
+    argus/         # ARGUS ProdSec skills (GitHub + GitLab fetch + cache)
+    config/        # YAML config loader + hardcoded defaults
     assess/        # Main pipeline orchestration
     classify/      # Deterministic classification + priority logic
     cve/           # CVSS score fetching from cve.org API
@@ -348,7 +349,7 @@ vigil/
 
 ## ARGUS ProdSec Skills Integration
 
-Vigil v0.0.2 integrates with the [ARGUS ProdSec skills repository](https://gitlab.cee.redhat.com/product-security/prodsec-skills/-/tree/main/skills) to ensure fix PRs follow Red Hat enterprise security standards:
+Vigil integrates with the [ARGUS ProdSec skills repository](https://github.com/RedHatProductSecurity/prodsec-skills) (public, 138 skills) to ensure fix PRs follow Red Hat enterprise security standards. Falls back to [internal GitLab](https://gitlab.cee.redhat.com/product-security/prodsec-skills/) when available:
 
 | Skill | What it provides |
 |---|---|
@@ -377,7 +378,11 @@ v0.0.2 — extends the triage pipeline from v0.0.1 with three detection sources,
 - **`--include-bugs`** — filter non-CVE Bug tickets from scan results
 - **`--fix`** — auto-fix Fixable Now tickets with `vigil fix` pipeline
 - **CREATED column** in `--short` table output (Jira ticket creation date)
+- **UPDATED column** in `--short` table output (Jira last-modified date for staleness tracking)
 - **Go toolchain** in container for govulncheck source-level analysis
+- **`--config`** — optional YAML config file to define components, operators, and repos (see `vigil.yaml.example`)
+- **`--commit`** — pin repo checkout to a specific commit SHA for point-in-time analysis
+- **ARGUS dual sources** — fetch ProdSec skills from [public GitHub](https://github.com/RedHatProductSecurity/prodsec-skills) (no auth), fall back to internal GitLab
 
 ### Roadmap
 
@@ -388,4 +393,6 @@ See [docs/v0.0.2/design.md](docs/v0.0.2/design.md) and [docs/v0.0.2/plan.md](doc
 
 **v0.0.3 Preview:**
 - Snyk integration ([RHWA-632](https://redhat.atlassian.net/browse/RHWA-632))
+- Fix-function-level reachability — check if the operator calls the *specific functions* changed in the fix CL
+- Reachability mode for patch release decisions (`vigil reachability --component far --version 0.2`)
 - Agentic mode — detection agent + fix agent running independently
