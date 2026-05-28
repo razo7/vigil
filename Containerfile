@@ -1,4 +1,6 @@
-FROM golang:1.25-bookworm AS builder
+# Use golang:1 (latest stable) to avoid govulncheck/toolchain mismatch when
+# upstream repos vendor dependencies with newer Go build tags.
+FROM golang:1-bookworm AS builder
 
 WORKDIR /build
 COPY go.mod go.sum ./
