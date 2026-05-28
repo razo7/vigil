@@ -47,3 +47,14 @@ func ResolveRepoPath(path string) (repoPath string, cleanup func(), err error) {
 
 	return tmpDir, cleanup, nil
 }
+
+func CheckoutCommit(repoPath, commit string) error {
+	cmd := exec.Command("git", "checkout", commit)
+	cmd.Dir = repoPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("checking out commit %s: %s: %w", commit, strings.TrimSpace(string(out)), err)
+	}
+	fmt.Fprintf(os.Stderr, "Pinned to commit %s\n", commit)
+	return nil
+}

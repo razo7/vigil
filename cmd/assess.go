@@ -16,6 +16,7 @@ var (
 	assessSummaryFile string
 	assessRepoPath    string
 	assessFix         bool
+	assessCommit      string
 )
 
 var assessCmd = &cobra.Command{
@@ -30,6 +31,7 @@ analysis, check downstream base image compatibility, and classify the CVE.`,
 		result, err := assess.Run(cmd.Context(), assess.Options{
 			TicketID: ticketID,
 			RepoPath: assessRepoPath,
+			Commit:   assessCommit,
 		})
 		if err != nil {
 			return fmt.Errorf("assessment failed: %w", err)
@@ -84,5 +86,6 @@ func init() {
 	assessCmd.Flags().StringVar(&assessSummaryFile, "summary-file", "", "Write sanitized summary to file")
 	assessCmd.Flags().StringVar(&assessRepoPath, "repo-path", "", "Path to operator repo (auto-detected from Jira component if omitted)")
 	assessCmd.Flags().BoolVar(&assessFix, "fix", false, "Auto-fix if classified as Fixable Now")
+	assessCmd.Flags().StringVar(&assessCommit, "commit", "", "Pin repo checkout to a specific commit SHA")
 	rootCmd.AddCommand(assessCmd)
 }
