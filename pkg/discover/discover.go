@@ -24,6 +24,7 @@ type Options struct {
 	JQL          string
 	Since        string
 	ComponentMap map[string]string
+	ProjectJQL   string
 }
 
 var defaultComponentMap = map[string]string{
@@ -183,9 +184,13 @@ func buildTicketMap(opts Options) map[string]*jira.TicketInfo {
 		if !ok {
 			return nil
 		}
+		projectFilter := opts.ProjectJQL
+		if projectFilter == "" {
+			projectFilter = "project in (RHWA, ECOPROJECT)"
+		}
 		jql = fmt.Sprintf(
-			`project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("%s") ORDER BY created DESC`,
-			fullName,
+			`%s AND issuetype in (Vulnerability, Bug) AND component in ("%s") ORDER BY created DESC`,
+			projectFilter, fullName,
 		)
 	}
 	if opts.Since != "" {

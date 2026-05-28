@@ -1,3 +1,9 @@
+jira:
+  base_url: "https://redhat.atlassian.net"
+  projects:
+    - RHWA
+    - ECOPROJECT
+
 components:
   far:
     jira_name: "Fence Agents Remediation"

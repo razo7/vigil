@@ -41,8 +41,8 @@ func loadComponentMap() map[string]string {
 
 func buildComponentJQL(component string) string {
 	return fmt.Sprintf(
-		`project in (RHWA, ECOPROJECT) AND issuetype in (Vulnerability, Bug) AND component in ("%s") AND status not in (Closed) ORDER BY created DESC`,
-		component,
+		`%s AND issuetype in (Vulnerability, Bug) AND component in ("%s") AND status not in (Closed) ORDER BY created DESC`,
+		getConfig().Jira.ProjectJQL(), component,
 	)
 }
 
@@ -92,6 +92,7 @@ func runDiscoverOnly() error {
 		JQL:          scanJQL,
 		Since:        scanSince,
 		ComponentMap: loadComponentMap(),
+		ProjectJQL:   getConfig().Jira.ProjectJQL(),
 	})
 	if err != nil {
 		return fmt.Errorf("running discovery: %w", err)
@@ -227,7 +228,7 @@ func runCombinedScan() error {
 	for i, ticket := range cveTickets {
 		ticketID := ticket.Key
 
-		ticketLink := termLink(ticketID, fmt.Sprintf("https://redhat.atlassian.net/browse/%s", ticketID))
+		ticketLink := termLink(ticketID, getConfig().Jira.BrowseURL(ticketID))
 		if stderrColor {
 			sc := colorForStatus(ticket.Status)
 			fmt.Fprintf(os.Stderr, "[%d/%d] %s %s[%s]%s ", i+1, len(cveTickets), ticketLink, sc, ticket.Status, colorReset)
@@ -304,6 +305,7 @@ func runCombinedScan() error {
 		JQL:          jql,
 		Since:        scanSince,
 		ComponentMap: loadComponentMap(),
+		ProjectJQL:   getConfig().Jira.ProjectJQL(),
 	})
 
 	var discoveredGaps []types.DiscoveredVuln

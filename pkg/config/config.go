@@ -9,7 +9,31 @@ import (
 )
 
 type Config struct {
+	Jira       JiraConfig                 `yaml:"jira"`
 	Components map[string]ComponentConfig `yaml:"components"`
+}
+
+type JiraConfig struct {
+	BaseURL  string   `yaml:"base_url"`
+	Projects []string `yaml:"projects"`
+}
+
+func (j JiraConfig) ProjectJQL() string {
+	if len(j.Projects) == 0 {
+		return "project in (RHWA, ECOPROJECT)"
+	}
+	if len(j.Projects) == 1 {
+		return fmt.Sprintf("project = %s", j.Projects[0])
+	}
+	return fmt.Sprintf("project in (%s)", strings.Join(j.Projects, ", "))
+}
+
+func (j JiraConfig) BrowseURL(ticketID string) string {
+	base := j.BaseURL
+	if base == "" {
+		base = "https://redhat.atlassian.net"
+	}
+	return fmt.Sprintf("%s/browse/%s", strings.TrimRight(base, "/"), ticketID)
 }
 
 type ComponentConfig struct {
@@ -32,6 +56,10 @@ func Load(path string) (*Config, error) {
 
 func Default() *Config {
 	return &Config{
+		Jira: JiraConfig{
+			BaseURL:  "https://redhat.atlassian.net",
+			Projects: []string{"RHWA", "ECOPROJECT"},
+		},
 		Components: map[string]ComponentConfig{
 			"far": {
 				JiraName:     "Fence Agents Remediation",
