@@ -14,7 +14,8 @@ import (
 
 const (
 	defaultGitLabHost = "https://gitlab.cee.redhat.com"
-	projectPath       = "product-security/prodsec-skills"
+	gitLabProject     = "product-security/prodsec-skills"
+	gitHubRawBase     = "https://raw.githubusercontent.com/RedHatProductSecurity/prodsec-skills"
 	defaultRef        = "main"
 	cacheTTL          = 24 * time.Hour
 )
@@ -117,12 +118,58 @@ func fetchAndCache(s Skill, cacheDir string) (*Skill, error) {
 		}
 	}
 
+	content, err := fetchFromGitHub(s)
+	if err != nil {
+		var gitLabErr error
+		content, gitLabErr = fetchFromGitLab(s)
+		if gitLabErr != nil {
+			return nil, fmt.Errorf("github: %w; gitlab: %w", err, gitLabErr)
+		}
+	}
+
+	s.Content = content
+
+	if cacheDir != "" {
+		writeCache(cacheDir, s.Name, s.Content)
+	}
+
+	return &s, nil
+}
+
+func gitHubSkillURL(name string) string {
+	base := os.Getenv("GITHUB_RAW_BASE")
+	if base == "" {
+		base = gitHubRawBase
+	}
+	return fmt.Sprintf("%s/%s/module/skills/%s/SKILL.md", base, defaultRef, name)
+}
+
+func fetchFromGitHub(s Skill) (string, error) {
+	ghURL := gitHubSkillURL(s.Name)
+	resp, err := http.DefaultClient.Get(ghURL)
+	if err != nil {
+		return "", fmt.Errorf("fetching skill %s from GitHub: %w", s.Name, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub returned %d for skill %s", resp.StatusCode, s.Name)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading skill %s from GitHub: %w", s.Name, err)
+	}
+	return string(body), nil
+}
+
+func fetchFromGitLab(s Skill) (string, error) {
 	token := os.Getenv("GITLAB_TOKEN")
 	if token == "" {
 		token = os.Getenv("GITLAB_PRIVATE_TOKEN")
 	}
 	if token == "" {
-		return nil, fmt.Errorf("GITLAB_TOKEN or GITLAB_PRIVATE_TOKEN required to fetch ARGUS skills")
+		return "", fmt.Errorf("GITLAB_TOKEN or GITLAB_PRIVATE_TOKEN required")
 	}
 
 	host := os.Getenv("GITLAB_HOST")
@@ -130,39 +177,32 @@ func fetchAndCache(s Skill, cacheDir string) (*Skill, error) {
 		host = defaultGitLabHost
 	}
 
-	encodedProject := url.PathEscape(projectPath)
+	encodedProject := url.PathEscape(gitLabProject)
 	encodedFile := url.PathEscape(s.Path)
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/repository/files/%s/raw?ref=%s",
 		host, encodedProject, encodedFile, defaultRef)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return "", fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("PRIVATE-TOKEN", token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching skill %s: %w", s.Name, err)
+		return "", fmt.Errorf("fetching skill %s from GitLab: %w", s.Name, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab returned %d for skill %s", resp.StatusCode, s.Name)
+		return "", fmt.Errorf("GitLab returned %d for skill %s", resp.StatusCode, s.Name)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading skill %s: %w", s.Name, err)
+		return "", fmt.Errorf("reading skill %s from GitLab: %w", s.Name, err)
 	}
-
-	s.Content = string(body)
-
-	if cacheDir != "" {
-		writeCache(cacheDir, s.Name, s.Content)
-	}
-
-	return &s, nil
+	return string(body), nil
 }
 
 func cacheKey(name string) string {

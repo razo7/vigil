@@ -95,28 +95,21 @@ func TestFetchSkillUnknown(t *testing.T) {
 	}
 }
 
-func TestFetchSkillFromGitLab(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("PRIVATE-TOKEN") != "test-token" {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		w.Write([]byte("# Fetched Skill Content"))
-	})
-	ts := httptest.NewServer(handler)
-	defer ts.Close()
+func TestFetchSkillFromGitHub(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("# GitHub Skill Content"))
+	}))
+	defer ghServer.Close()
 
-	os.Setenv("GITLAB_TOKEN", "test-token")
-	os.Setenv("GITLAB_HOST", ts.URL)
-	defer os.Unsetenv("GITLAB_TOKEN")
-	defer os.Unsetenv("GITLAB_HOST")
+	t.Setenv("GITHUB_RAW_BASE", ghServer.URL)
+	t.Setenv("GITLAB_HOST", "http://unreachable.invalid")
 
 	cacheDir := t.TempDir()
 	skill, err := FetchSkill("go-security", cacheDir)
 	if err != nil {
-		t.Fatalf("FetchSkill from mock GitLab failed: %v", err)
+		t.Fatalf("FetchSkill from mock GitHub failed: %v", err)
 	}
-	if skill.Content != "# Fetched Skill Content" {
+	if skill.Content != "# GitHub Skill Content" {
 		t.Errorf("unexpected content: %q", skill.Content)
 	}
 
@@ -124,8 +117,66 @@ func TestFetchSkillFromGitLab(t *testing.T) {
 	if !ok {
 		t.Error("expected skill to be cached after fetch")
 	}
-	if cached != "# Fetched Skill Content" {
+	if cached != "# GitHub Skill Content" {
 		t.Errorf("cached content = %q, want fetched content", cached)
+	}
+}
+
+func TestFetchSkillFallbackToGitLab(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ghServer.Close()
+
+	glServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("PRIVATE-TOKEN") != "test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Write([]byte("# GitLab Skill Content"))
+	}))
+	defer glServer.Close()
+
+	t.Setenv("GITHUB_RAW_BASE", ghServer.URL)
+	t.Setenv("GITLAB_TOKEN", "test-token")
+	t.Setenv("GITLAB_HOST", glServer.URL)
+
+	cacheDir := t.TempDir()
+	skill, err := FetchSkill("go-security", cacheDir)
+	if err != nil {
+		t.Fatalf("FetchSkill fallback to mock GitLab failed: %v", err)
+	}
+	if skill.Content != "# GitLab Skill Content" {
+		t.Errorf("unexpected content: %q", skill.Content)
+	}
+
+	cached, ok := readCache(cacheDir, "go-security")
+	if !ok {
+		t.Error("expected skill to be cached after fetch")
+	}
+	if cached != "# GitLab Skill Content" {
+		t.Errorf("cached content = %q, want fetched content", cached)
+	}
+}
+
+func TestFetchSkillBothSourcesFail(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ghServer.Close()
+
+	glServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer glServer.Close()
+
+	t.Setenv("GITHUB_RAW_BASE", ghServer.URL)
+	t.Setenv("GITLAB_TOKEN", "test-token")
+	t.Setenv("GITLAB_HOST", glServer.URL)
+
+	_, err := FetchSkill("go-security", "")
+	if err == nil {
+		t.Error("expected error when both sources fail")
 	}
 }
 
