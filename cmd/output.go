@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/razo7/vigil/pkg/types"
 	"golang.org/x/term"
 )
 
@@ -236,4 +237,99 @@ func joinLines(lines []string) string {
 		result += "\n" + l
 	}
 	return result
+}
+
+func htmlClassColor(c types.Classification) string {
+	switch c {
+	case types.FixableNow:
+		return "#d32f2f"
+	case types.BlockedByGo:
+		return "#f57c00"
+	case types.NotReachable:
+		return "#388e3c"
+	case types.NotGo:
+		return "#fbc02d"
+	case types.Misassigned:
+		return "#9e9e9e"
+	default:
+		return "#000"
+	}
+}
+
+func htmlPrioColor(p types.Priority) string {
+	switch p {
+	case types.PriorityCritical:
+		return "#d32f2f"
+	case types.PriorityHigh:
+		return "#f57c00"
+	case types.PriorityMedium:
+		return "#fbc02d"
+	case types.PriorityLow:
+		return "#388e3c"
+	default:
+		return "#9e9e9e"
+	}
+}
+
+func printHTMLTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln) {
+	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
+
+	fmt.Println(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Vigil Scan Report</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 20px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { background: #24292e; color: #fff; padding: 8px 10px; text-align: left; position: sticky; top: 0; }
+td { padding: 6px 10px; border-bottom: 1px solid #e1e4e8; }
+tr:hover { background: #f6f8fa; }
+a { color: #0366d6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.tag { padding: 2px 8px; border-radius: 12px; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+</style></head><body>
+<h1>Vigil Scan Report</h1>
+<p>Generated: ` + time.Now().Format("2006-01-02 15:04") + `</p>
+<table><thead><tr>
+<th>SRC</th><th>TICKET</th><th>CREATED</th><th>UPDATED</th><th>CVE</th><th>VERSION</th><th>LANG</th><th>STATUS</th><th>CLASSIFICATION</th><th>PRIORITY</th><th>PACKAGE</th><th>CVSS</th><th>REACHABILITY</th>
+</tr></thead><tbody>`)
+
+	for _, row := range rows {
+		langDisplay := row.lang
+		if row.langSrc != "" {
+			langDisplay = fmt.Sprintf("%s(%s)", row.lang, row.langSrc)
+		}
+		pkgDisplay := row.pkg
+		if row.pkgSrc != "" && row.pkg != "" {
+			pkgDisplay = fmt.Sprintf("%s(%s)", row.pkg, row.pkgSrc)
+		}
+
+		ticketCell := row.ticket
+		if row.ticketURL != "" {
+			ticketCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.ticketURL, row.ticket)
+		}
+		cveCell := row.cveID
+		if row.cveURL != "" {
+			cveCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.cveURL, row.cveID)
+		}
+
+		classCell := fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, htmlClassColor(row.classification), row.classification)
+		prioCell := fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, htmlPrioColor(row.priority), shortPriority(row.priority))
+
+		reachDisplay := row.reachability
+		if ep := entryPointFile(row.callPaths); ep != "" {
+			label := row.reachability
+			if isTestPath(ep) && label == "REACHABLE" {
+				label = "TEST-ONLY"
+			}
+			reachDisplay = fmt.Sprintf("%s (%s)", label, ep)
+		} else if row.reachability == "MODULE-LEVEL" {
+			reachDisplay = "MODULE-LEVEL (go.mod only)"
+		} else if row.reachability == "PACKAGE-LEVEL" && row.importChain != "" {
+			reachDisplay = fmt.Sprintf("PACKAGE-LEVEL (%s)", row.importChain)
+		}
+
+		fmt.Printf("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td></tr>\n",
+			row.src, ticketCell, row.created, row.updated, cveCell, row.version, langDisplay, row.status, classCell, prioCell, pkgDisplay, row.cvss, reachDisplay)
+	}
+
+	fmt.Println(`</tbody></table></body></html>`)
 }

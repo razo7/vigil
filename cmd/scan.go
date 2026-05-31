@@ -34,6 +34,7 @@ var (
 	scanIncludeBugs   bool
 	scanCommit        string
 	scanGoVersion     string
+	scanFormat        string
 )
 
 func loadComponentMap() map[string]string {
@@ -392,7 +393,9 @@ func runCombinedScan() error {
 		}
 	}
 
-	if scanShort {
+	if scanFormat == "html" {
+		printHTMLTable(results, discoveredGaps, discResult, trivyVulns)
+	} else if scanShort {
 		printCombinedTable(results, discoveredGaps, discResult, trivyVulns, errors)
 	} else {
 		output := map[string]interface{}{
@@ -1257,5 +1260,6 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanFix, "fix", false, "Auto-fix Fixable Now tickets (use with --dry-run for preview)")
 	scanCmd.Flags().StringVar(&scanCommit, "commit", "", "Pin repo checkout to a specific commit SHA")
 	scanCmd.Flags().StringVar(&scanGoVersion, "go-version", "", "Downstream Go version (skips GitLab Containerfile fetch)")
+	scanCmd.Flags().StringVar(&scanFormat, "format", "", "Output format: html (writes colored HTML table to stdout)")
 	rootCmd.AddCommand(scanCmd)
 }
