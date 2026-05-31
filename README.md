@@ -141,8 +141,36 @@ vigil scan --component FAR --short --since 1w          # last week only
 vigil scan --component FAR --short --commit abc1234    # pin to specific commit
 vigil scan --component FAR --fix                       # auto-fix Fixable Now
 vigil scan --component FAR --fix --dry-run             # preview fixes
+vigil scan --component FAR --go-version 1.25.9         # skip GitLab token
 vigil scan --component FAR --jira --summary-file vigil-summary.json
 ```
+
+### HTML report (colored, browser-friendly)
+
+```bash
+vigil scan --component FAR --format html > far-report.html
+xdg-open far-report.html
+```
+
+Produces a standalone HTML file with colored classification/priority badges, clickable Jira and CVE links, sticky headers, and hover highlighting. The terminal `--short` output uses ANSI colors; `--format html` preserves the same color scheme for browsers.
+
+**Color legend (applies to both terminal and HTML output):**
+
+| Emoji | Classification | Meaning |
+|-------|---------------|---------|
+| 🔴🔧 | Fixable Now | Fix available, downstream supports it |
+| 🟠⏳ | Blocked by Go | Fix needs newer Go than downstream provides |
+| 🟢✓ | Not Reachable | Vuln in dependency but no call path |
+| 🐍 | Not Go | Python/non-Go CVE |
+| ↩️ | Misassigned | Wrong image or EOL version |
+
+| Emoji | Reachability | Meaning |
+|-------|-------------|---------|
+| 🎯 | REACHABLE | govulncheck confirmed call path to vulnerable function |
+| 🧪 | TEST-ONLY | Reachable only in test code |
+| 📦 | PACKAGE-LEVEL | Package imported but no direct call path |
+| 📋 | MODULE-LEVEL | In go.mod only, package not imported |
+| 🚫 | NOT-IMPORTED | Affected package not imported at all |
 
 ### Custom Jira instance
 
@@ -392,6 +420,11 @@ v0.0.2 — extends the triage pipeline from v0.0.1 with three detection sources,
 - **`--config`** — optional YAML config file to define components, operators, and repos (see `vigil.yaml.example`)
 - **`--commit`** — pin repo checkout to a specific commit SHA for point-in-time analysis
 - **ARGUS dual sources** — fetch ProdSec skills from [public GitHub](https://github.com/RedHatProductSecurity/prodsec-skills) (no auth), fall back to internal GitLab
+- **`--format html`** — colored HTML report with badges, clickable links, sticky headers (open in browser)
+- **`--go-version`** — specify downstream Go version directly, skip GitLab Containerfile fetch
+- **Fix-function reachability** — downgrade to Not Reachable when fix CL functions are not called by the operator
+- **Jira project/URL configurable** — `jira.base_url` and `jira.projects` in config, not hardcoded to RHWA/ECOPROJECT
+- **OCP lifecycle in config** — operator→OCP version mappings movable to YAML (no code change needed for new versions)
 
 ### Roadmap
 
