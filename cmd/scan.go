@@ -13,6 +13,7 @@ import (
 	"github.com/razo7/vigil/pkg/discover"
 	"github.com/razo7/vigil/pkg/fix"
 	"github.com/razo7/vigil/pkg/jira"
+	"github.com/razo7/vigil/pkg/route"
 	"github.com/razo7/vigil/pkg/report"
 	"github.com/razo7/vigil/pkg/trivy"
 	"github.com/razo7/vigil/pkg/types"
@@ -37,6 +38,7 @@ var (
 	scanGoVersion     string
 	scanFormat        string
 	scanDetectOnly    bool
+	scanVerbose       bool
 )
 
 func loadComponentMap() map[string]string {
@@ -263,7 +265,7 @@ func runCombinedScan() error {
 			fmt.Fprintf(os.Stderr, "→ %s (%s)\n", result.Recommendation.Classification, result.Recommendation.Priority)
 		}
 
-		if scanJira && !scanDetectOnly {
+		if scanJira {
 			if err := report.PostToJira(result); err != nil {
 				fmt.Fprintf(os.Stderr, "  WARNING: failed to post Jira comment: %v\n", err)
 			}
@@ -396,10 +398,6 @@ func runCombinedScan() error {
 	}
 
 	if scanDetectOnly {
-		goVer := ""
-		if discResult != nil {
-			goVer = discResult.GoVersion
-		}
 		output := types.DetectionOutput{
 			Findings:   results,
 			Discovered: append(discoveredGaps, trivyVulns...),
@@ -407,7 +405,6 @@ func runCombinedScan() error {
 				Component: scanComponent,
 				RepoPath:  repoPath,
 				ScannedAt: time.Now(),
-				GoVersion: goVer,
 			},
 		}
 		enc := json.NewEncoder(os.Stdout)
@@ -416,18 +413,9 @@ func runCombinedScan() error {
 	}
 
 	if scanFormat == "html" {
-		printHTMLTable(results, discoveredGaps, discResult, trivyVulns)
+		printHTMLTable(results, discoveredGaps, discResult, trivyVulns, scanVerbose)
 	} else if scanShort {
 		printCombinedTable(results, discoveredGaps, discResult, trivyVulns, errors)
-		if forceColor || term.IsTerminal(int(os.Stderr.Fd())) {
-			combinedRows := buildCombinedRows(results, discoveredGaps, discResult, trivyVulns)
-			for _, row := range combinedRows {
-				if strings.HasPrefix(row.reachability, "REACHABLE") && len(row.callPaths) > 0 {
-					printCallTree(row.cveID, row.callPaths)
-				}
-			}
-			printDashboard(strings.ToUpper(scanComponent), combinedRows, discoveredGaps, trivyVulns, errors)
-		}
 	} else {
 		output := map[string]interface{}{
 			"total":      len(tickets),
@@ -643,6 +631,7 @@ type combinedRow struct {
 	importChain    string
 	created        string
 	updated        string
+	fixRoute       route.Route
 }
 
 func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln) []combinedRow {
@@ -699,6 +688,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			callPaths:      callPaths,
 			created:        r.Source.Created,
 			updated:        r.Source.Updated,
+			fixRoute:       route.Decide(r),
 		})
 	}
 	for _, v := range gaps {
@@ -1293,5 +1283,6 @@ func init() {
 	scanCmd.Flags().StringVar(&scanGoVersion, "go-version", "", "Downstream Go version (skips GitLab Containerfile fetch)")
 	scanCmd.Flags().StringVar(&scanFormat, "format", "", "Output format: html (writes colored HTML table to stdout)")
 	scanCmd.Flags().BoolVar(&scanDetectOnly, "detect-only", false, "Output JSON findings without fix or display")
+	scanCmd.Flags().BoolVar(&scanVerbose, "verbose", false, "Include verbose details in HTML output (call-path diagrams)")
 	rootCmd.AddCommand(scanCmd)
 }
