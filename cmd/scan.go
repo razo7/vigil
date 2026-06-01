@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/razo7/vigil/pkg/assess"
 	"github.com/razo7/vigil/pkg/discover"
@@ -35,6 +36,7 @@ var (
 	scanCommit        string
 	scanGoVersion     string
 	scanFormat        string
+	scanDetectOnly    bool
 )
 
 func loadComponentMap() map[string]string {
@@ -261,13 +263,13 @@ func runCombinedScan() error {
 			fmt.Fprintf(os.Stderr, "→ %s (%s)\n", result.Recommendation.Classification, result.Recommendation.Priority)
 		}
 
-		if scanJira {
+		if scanJira && !scanDetectOnly {
 			if err := report.PostToJira(result); err != nil {
 				fmt.Fprintf(os.Stderr, "  WARNING: failed to post Jira comment: %v\n", err)
 			}
 		}
 
-		if scanFix && result.Recommendation.Classification == types.FixableNow {
+		if scanFix && !scanDetectOnly && result.Recommendation.Classification == types.FixableNow {
 			fmt.Fprintf(os.Stderr, "  → Running fix pipeline for %s...\n", ticketID)
 			fixResult, fixErr := fix.Run(ctx, fix.Options{
 				TicketID: ticketID,
@@ -393,10 +395,39 @@ func runCombinedScan() error {
 		}
 	}
 
+	if scanDetectOnly {
+		goVer := ""
+		if discResult != nil {
+			goVer = discResult.GoVersion
+		}
+		output := types.DetectionOutput{
+			Findings:   results,
+			Discovered: append(discoveredGaps, trivyVulns...),
+			Metadata: types.DetectionMetadata{
+				Component: scanComponent,
+				RepoPath:  repoPath,
+				ScannedAt: time.Now(),
+				GoVersion: goVer,
+			},
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(output)
+	}
+
 	if scanFormat == "html" {
 		printHTMLTable(results, discoveredGaps, discResult, trivyVulns)
 	} else if scanShort {
 		printCombinedTable(results, discoveredGaps, discResult, trivyVulns, errors)
+		if forceColor || term.IsTerminal(int(os.Stderr.Fd())) {
+			combinedRows := buildCombinedRows(results, discoveredGaps, discResult, trivyVulns)
+			for _, row := range combinedRows {
+				if strings.HasPrefix(row.reachability, "REACHABLE") && len(row.callPaths) > 0 {
+					printCallTree(row.cveID, row.callPaths)
+				}
+			}
+			printDashboard(strings.ToUpper(scanComponent), combinedRows, discoveredGaps, trivyVulns, errors)
+		}
 	} else {
 		output := map[string]interface{}{
 			"total":      len(tickets),
@@ -1261,5 +1292,6 @@ func init() {
 	scanCmd.Flags().StringVar(&scanCommit, "commit", "", "Pin repo checkout to a specific commit SHA")
 	scanCmd.Flags().StringVar(&scanGoVersion, "go-version", "", "Downstream Go version (skips GitLab Containerfile fetch)")
 	scanCmd.Flags().StringVar(&scanFormat, "format", "", "Output format: html (writes colored HTML table to stdout)")
+	scanCmd.Flags().BoolVar(&scanDetectOnly, "detect-only", false, "Output JSON findings without fix or display")
 	rootCmd.AddCommand(scanCmd)
 }
