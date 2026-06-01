@@ -74,25 +74,38 @@ jobs:
           SUMMARY=$(echo "${CLEAN}" | tail -1)
           echo "::notice title=🔍 Vigil ${{ matrix.component }}::${SUMMARY}"
 
-          echo "## 🔍 Vigil Scan: ${{ matrix.component }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Result:** ${SUMMARY}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "${CLEAN}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-
-          if [ -f ${{ matrix.component }}-report.html ]; then
-            SIZE=$(wc -c < ${{ matrix.component }}-report.html)
-            if [ "$SIZE" -gt 1000 ]; then
-              echo "<details><summary>📊 HTML Report Preview (click to expand)</summary>" >> "$GITHUB_STEP_SUMMARY"
-              echo "" >> "$GITHUB_STEP_SUMMARY"
-              cat ${{ matrix.component }}-report.html >> "$GITHUB_STEP_SUMMARY"
-              echo "" >> "$GITHUB_STEP_SUMMARY"
-              echo "</details>" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          fi
+          {
+            echo "## 🔍 Vigil Scan: ${{ matrix.component }}"
+            echo ""
+            echo "**Result:** ${SUMMARY}"
+            echo ""
+            echo "${CLEAN}" | grep -E "^(SRC|Jira|GVC|Trivy)" | sed \
+              -e 's/Fixable Now/🔴🔧 Fixable Now/g' \
+              -e 's/Not Reachable/🟢✓ Not Reachable/g' \
+              -e 's/Blocked by Go/🟠⏳ Blocked by Go/g' \
+              -e 's/Not Go/🐍 Not Go/g' \
+              -e 's/Misassigned/↩️ Misassigned/g' \
+              -e 's/Critical/🔴 Critical/g' \
+              -e 's/High/🟠 High/g' \
+              -e 's/Medium/🟡 Medium/g' \
+              -e 's/Low/🟢 Low/g' \
+              -e 's/REACHABLE/🎯 REACHABLE/g' \
+              -e 's/PACKAGE-LEVEL/📦 PACKAGE-LEVEL/g' \
+              -e 's/MODULE-LEVEL/📋 MODULE-LEVEL/g' \
+              -e 's/NOT-IMPORTED/🚫 NOT-IMPORTED/g' \
+              -e 's/TEST-ONLY/🧪 TEST-ONLY/g' | while IFS= read -r line; do
+              echo "${line}  "
+            done
+            echo ""
+            echo "<details><summary>📄 Raw scan output</summary>"
+            echo ""
+            echo '```'
+            echo "${CLEAN}"
+            echo '```'
+            echo "</details>"
+            echo ""
+            echo "📎 Download the full **HTML report** from Artifacts for charts and diagrams."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload reports
         uses: actions/upload-artifact@v4
