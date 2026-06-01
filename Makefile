@@ -1,6 +1,6 @@
 IMAGE_REGISTRY ?= quay.io/oraz
 IMAGE_NAME ?= vigil
-VERSION ?= 0.0.2
+VERSION ?= 0.0.3
 IMAGE_TAG ?= latest
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 

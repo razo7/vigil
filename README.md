@@ -426,15 +426,27 @@ v0.0.2 — extends the triage pipeline from v0.0.1 with three detection sources,
 - **Jira project/URL configurable** — `jira.base_url` and `jira.projects` in config, not hardcoded to RHWA/ECOPROJECT
 - **OCP lifecycle in config** — operator→OCP version mappings movable to YAML (no code change needed for new versions)
 
+### What's new in v0.0.3
+
+- **`vigil reachability`** — multi-signal analysis per release branch (govulncheck + fix-function match + OCP lifecycle) with backport verdict
+- **Intelligent routing** — routes CVEs to DependencyBump, GoMinor, SemanticFix, or Manual based on package type and fix version
+- **Agentic pipe protocol** — `vigil scan --detect-only | vigil fix --batch` for decoupled detection + fixing
+- **Terminal dashboard** — compact summary with classification/reachability counts and top 5 action items after scan
+- **ASCII call-path trees** — REACHABLE CVEs show call chain from operator code to vulnerable function
+- **Two-tier HTML reports** — summary page with SVG donut chart + severity bar + sortable table; verbose page with mermaid call-path diagrams
+- **`--security-review`** on fix — checks diffs for replace directives, version downgrades, new deps, removed crypto imports
+- **Variant analysis** — after fix, scans for remaining CVEs in the same package
+- **Security warnings in PRs** — diff review findings included in PR descriptions
+
 ### Roadmap
 
-See [docs/v0.0.2/design.md](docs/v0.0.2/design.md) and [docs/v0.0.2/plan.md](docs/v0.0.2/plan.md).
+See [docs/v0.0.3/plan.md](docs/v0.0.3/plan.md).
 
-**Pending for v0.0.2:**
-- Intelligent routing (deterministic fix vs AI-assisted workflow)
-
-**v0.0.3 Preview:**
+**v0.0.4 Preview:**
 - Snyk integration ([RHWA-632](https://redhat.atlassian.net/browse/RHWA-632))
-- Fix-function-level reachability — check if the operator calls the *specific functions* changed in the fix CL
-- Reachability mode for patch release decisions (`vigil reachability --component far --version 0.2`)
-- Agentic mode — detection agent + fix agent running independently
+- Konflux Conforma results as input source for component state
+- Multi-branch reachability comparison (`vigil reachability --component far --version 0.2,0.4`)
+- ExploitIQ reachability oracle for ambiguous CVEs
+- In-process async mode (goroutine-based agentic)
+- Interactive TUI for call path navigation
+- ASCII call trees color-coded by origin (operator/k8s deps/vulnerable pkg)
