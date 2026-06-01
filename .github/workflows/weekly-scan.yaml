@@ -65,6 +65,19 @@ jobs:
           SUMMARY=$(tail -1 ${{ matrix.component }}-scan.txt | sed 's/\x1b\[[0-9;]*m//g')
           echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
 
+      - name: Post summary
+        if: always()
+        run: |
+          SUMMARY=$(tail -1 ${{ matrix.component }}-scan.txt | sed 's/\x1b\[[0-9;]*m//g')
+          echo "::notice title=Vigil ${{ matrix.component }}::${SUMMARY}"
+          echo "## 🔍 Vigil Scan: ${{ matrix.component }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Result:** ${SUMMARY}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          sed 's/\x1b\[[0-9;]*m//g' ${{ matrix.component }}-scan.txt | sed 's/]8;;[^\\]*\\//g' | sed 's/]8;;\\//g' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload reports
         uses: actions/upload-artifact@v4
         with:
