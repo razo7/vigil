@@ -89,7 +89,7 @@ jobs:
               # Convert space-aligned columns to markdown table
               echo "| SRC | TICKET | CREATED | UPDATED | CVE | VERSION | LANG | STATUS | CLASSIFICATION | PRIORITY | PACKAGE | CVSS | REACHABILITY |"
               echo "|-----|--------|---------|---------|-----|---------|------|--------|----------------|----------|---------|------|--------------|"
-              echo "${CLEAN}" | grep -E "^(Jira|GVC|Trivy)" | while IFS= read -r line; do
+              echo "${CLEAN}" | grep -E "^(Jira |GVC  |Trivy )" | grep -v "Trivy found" | while IFS= read -r line; do
                 # Parse fixed-width columns into pipe-delimited
                 src=$(echo "$line" | awk '{print $1}')
                 ticket=$(echo "$line" | awk '{print $2}')
