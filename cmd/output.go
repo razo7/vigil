@@ -273,8 +273,24 @@ func htmlPrioColor(p types.Priority) string {
 }
 
 func printHTMLTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln, verbose ...bool) {
-	isVerbose := len(verbose) > 0 && verbose[0]
+	_ = verbose
 	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
+
+	cveVersions := map[string][]string{}
+	latestVersion := ""
+	for _, r := range rows {
+		if r.version != "" {
+			cveVersions[r.cveID] = append(cveVersions[r.cveID], r.version)
+			if latestVersion == "" || compareVersionStrings(r.version, latestVersion) > 0 {
+				latestVersion = r.version
+			}
+		}
+	}
+	for _, r := range rows {
+		if r.ticket == "-- none --" {
+			cveVersions[r.cveID] = append(cveVersions[r.cveID], "main")
+		}
+	}
 
 	classCounts := map[types.Classification]int{}
 	prioCounts := map[string]int{}
@@ -422,7 +438,7 @@ a:hover{text-decoration:underline}
 
 	// Table
 	fmt.Println(`<table id="scanTable"><thead><tr>
-<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">CVE</th><th onclick="sortTable(5)">VERSION</th><th onclick="sortTable(6)">LANG</th><th onclick="sortTable(7)">STATUS</th><th onclick="sortTable(8)">CLASSIFICATION</th><th onclick="sortTable(9)">PRIORITY</th><th onclick="sortTable(10)">PACKAGE</th><th onclick="sortTable(11)">CVSS</th><th onclick="sortTable(12)">REACHABILITY</th>
+<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">CVE</th><th onclick="sortTable(5)">VERSION</th><th onclick="sortTable(6)">LANG</th><th onclick="sortTable(7)">STATUS</th><th onclick="sortTable(8)">CLASSIFICATION</th><th onclick="sortTable(9)">PRIORITY</th><th onclick="sortTable(10)">PACKAGE</th><th onclick="sortTable(11)">CVSS</th><th onclick="sortTable(12)">REACHABILITY</th><th onclick="sortTable(13)">BACKPORT</th>
 </tr></thead><tbody>`)
 
 	for _, row := range rows {
@@ -458,33 +474,45 @@ a:hover{text-decoration:underline}
 			reachDisplay = fmt.Sprintf("PACKAGE-LEVEL (%s)", row.importChain)
 		}
 
-		fmt.Printf(`<tr id="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td></tr>`,
-			row.ticket, row.src, ticketCell, row.created, row.updated, cveCell, row.version, langDisplay, row.status, classCell, prioCell, pkgDisplay, row.cvss, reachDisplay)
-		fmt.Println()
-
-		if isVerbose && strings.HasPrefix(row.reachability, "REACHABLE") && len(row.callPaths) > 0 {
+		reachCell := reachDisplay
+		hasChain := (strings.HasPrefix(row.reachability, "REACHABLE") || strings.HasPrefix(row.reachability, "PACKAGE-LEVEL")) &&
+			(len(row.callPaths) > 0 || row.importChain != "")
+		if hasChain {
 			var frames []string
 			for _, cp := range row.callPaths {
 				parts := strings.Split(cp, " → ")
 				frames = append(frames, parts...)
 			}
+			if len(frames) == 0 && row.importChain != "" {
+				frames = strings.Split(row.importChain, " → ")
+			}
 			if len(frames) > 10 {
 				frames = append(frames[:3], append([]string{"..."}, frames[len(frames)-3:]...)...)
 			}
-			fmt.Printf(`<tr><td colspan="13"><div class="mermaid">graph LR%s`, "\n")
-			for i, frame := range frames {
-				safeFrame := strings.ReplaceAll(frame, `"`, "'")
-				nodeID := fmt.Sprintf("N%d", i)
-				if i < len(frames)-1 {
-					nextID := fmt.Sprintf("N%d", i+1)
-					fmt.Printf("    %s[\"%s\"] --> %s\n", nodeID, safeFrame, nextID)
-				} else {
-					fmt.Printf("    %s[\"%s\"]\n", nodeID, safeFrame)
-					fmt.Printf("    style %s fill:#d32f2f,color:#fff\n", nodeID)
+			if len(frames) > 1 {
+				var mermaid strings.Builder
+				mermaid.WriteString("graph LR\n")
+				for i, frame := range frames {
+					safeFrame := strings.ReplaceAll(frame, `"`, "'")
+					nodeID := fmt.Sprintf("N%d", i)
+					if i < len(frames)-1 {
+						nextID := fmt.Sprintf("N%d", i+1)
+						fmt.Fprintf(&mermaid, "    %s[\"%s\"] --> %s\n", nodeID, safeFrame, nextID)
+					} else {
+						fmt.Fprintf(&mermaid, "    %s[\"%s\"]\n", nodeID, safeFrame)
+						fmt.Fprintf(&mermaid, "    style %s fill:#d32f2f,color:#fff\n", nodeID)
+					}
 				}
+				reachCell = fmt.Sprintf(`%s<details><summary>🔎 call path</summary><div class="mermaid">%s</div></details>`,
+					reachDisplay, mermaid.String())
 			}
-			fmt.Println(`</div></td></tr>`)
 		}
+
+		bpCell := backportVerdict(row.cveID, row.version, latestVersion, cveVersions, row.classification)
+
+		fmt.Printf(`<tr id="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td><td>%s</td></tr>`,
+			row.ticket, row.src, ticketCell, row.created, row.updated, cveCell, row.version, langDisplay, row.status, classCell, prioCell, pkgDisplay, row.cvss, reachCell, bpCell)
+		fmt.Println()
 	}
 
 	fmt.Println(`</tbody></table>`)
@@ -503,10 +531,17 @@ for(var i=1;i<t.length;i++){var c=t[i].cells[8];
 if(!c)continue;t[i].style.display=(!f||c.textContent.indexOf(f)>-1)?"":"none"}}
 </script>`)
 
-	if isVerbose {
-		fmt.Println(`<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>`)
-		fmt.Println(`<script>mermaid.initialize({startOnLoad:true,theme:'neutral'});</script>`)
-	}
+	fmt.Println(`<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>`)
+	fmt.Println(`<script>
+mermaid.initialize({startOnLoad:false,theme:'neutral'});
+document.querySelectorAll('details').forEach(function(d){
+  d.addEventListener('toggle',function(){
+    if(d.open){d.querySelectorAll('.mermaid').forEach(function(el){
+      if(!el.getAttribute('data-processed')){mermaid.run({nodes:[el]})}
+    })}
+  })
+});
+</script>`)
 
 	fmt.Println(`</body></html>`)
 }
@@ -517,4 +552,59 @@ func cosD(deg float64) float64 {
 
 func sinD(deg float64) float64 {
 	return math.Sin(deg * math.Pi / 180)
+}
+
+func compareVersionStrings(a, b string) int {
+	a = strings.TrimPrefix(a, "v")
+	b = strings.TrimPrefix(b, "v")
+	pa := strings.Split(a, ".")
+	pb := strings.Split(b, ".")
+	for i := 0; i < len(pa) || i < len(pb); i++ {
+		var na, nb int
+		if i < len(pa) {
+			fmt.Sscanf(pa[i], "%d", &na)
+		}
+		if i < len(pb) {
+			fmt.Sscanf(pb[i], "%d", &nb)
+		}
+		if na != nb {
+			return na - nb
+		}
+	}
+	return 0
+}
+
+func backportVerdict(cveID, version, latestVersion string, cveVersions map[string][]string, classification types.Classification) string {
+	if classification == types.Misassigned {
+		return `<span class="tag" style="background:#9e9e9e">↩️ N/A</span>`
+	}
+	if classification == types.NotGo {
+		return `<span class="tag" style="background:#9e9e9e">🐍 N/A</span>`
+	}
+	if classification == types.NotReachable {
+		return `<span class="tag" style="background:#388e3c">🟢 No</span>`
+	}
+
+	if version == "" {
+		return `<span class="tag" style="background:#d32f2f">🔴 Fix latest</span>`
+	}
+
+	isLatest := version == latestVersion || compareVersionStrings(version, latestVersion) >= 0
+
+	versions := cveVersions[cveID]
+	affectsLatest := false
+	for _, v := range versions {
+		if v == "main" || v == latestVersion || compareVersionStrings(v, latestVersion) >= 0 {
+			affectsLatest = true
+			break
+		}
+	}
+
+	if isLatest {
+		return `<span class="tag" style="background:#d32f2f">🔴 Fix latest</span>`
+	}
+	if affectsLatest {
+		return `<span class="tag" style="background:#f57c00">🟠 Fix + backport</span>`
+	}
+	return `<span class="tag" style="background:#fbc02d;color:#333">🟡 Backport only</span>`
 }

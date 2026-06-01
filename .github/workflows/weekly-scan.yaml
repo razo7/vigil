@@ -156,8 +156,8 @@ jobs:
       matrix:
         component: ${{ fromJson(needs.setup.outputs.matrix) }}
 
-  summary:
-    name: Consolidated Summary
+  report:
+    name: Weekly Report
     needs: scan
     if: always()
     runs-on: ubuntu-24.04
@@ -169,6 +169,8 @@ jobs:
           merge-multiple: true
 
       - name: Build consolidated summary
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           {
             echo "# 🔍 Vigil Weekly CVE Scan"
@@ -185,8 +187,47 @@ jobs:
               echo "| **${COMP}** | ${assessed} | ${fixable} | ${notreach} | ${disc} | ${SUMMARY} |"
             done
             echo ""
-            echo "📎 Download HTML reports from [Artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts) below."
+            echo "📎 Download HTML reports from [Artifacts](${RUN_URL}#artifacts) below."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build consolidated HTML
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          cat > consolidated-report.html <<'HTMLEOF'
+          <!DOCTYPE html><html><head><meta charset="utf-8">
+          <title>Vigil Weekly Report</title>
+          <style>
+          body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:20px;color:#24292e}
+          h1{border-bottom:1px solid #e1e4e8;padding-bottom:8px}
+          .component{margin:24px 0;border:1px solid #e1e4e8;border-radius:8px;overflow:hidden}
+          .component h2{background:#24292e;color:#fff;margin:0;padding:10px 16px;font-size:16px}
+          .component iframe{width:100%;border:none;min-height:600px}
+          .summary{background:#f6f8fa;padding:12px 16px;font-size:13px;border-bottom:1px solid #e1e4e8}
+          </style></head><body>
+          <h1>🔍 Vigil Weekly CVE Scan</h1>
+          HTMLEOF
+
+          echo "<p>Generated: $(date -u '+%Y-%m-%d %H:%M UTC')</p>" >> consolidated-report.html
+
+          for f in *-report.html; do
+            COMP=$(basename "$f" -report.html)
+            SUMMARY=$(tail -1 "${COMP}-scan.txt" 2>/dev/null || echo "no data")
+            echo "<div class='component'>" >> consolidated-report.html
+            echo "<h2>📦 ${COMP}</h2>" >> consolidated-report.html
+            echo "<div class='summary'>${SUMMARY}</div>" >> consolidated-report.html
+            echo "<iframe srcdoc='$(sed "s/'/\&#39;/g" "$f")' loading='lazy'></iframe>" >> consolidated-report.html
+            echo "</div>" >> consolidated-report.html
+          done
+
+          echo "</body></html>" >> consolidated-report.html
+
+      - name: Upload consolidated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: vigil-weekly-report-${{ github.run_number }}
+          path: consolidated-report.html
+          retention-days: 90
 
       # Slack integration placeholder — uncomment and set SLACK_WEBHOOK_URL secret when ready
       #
