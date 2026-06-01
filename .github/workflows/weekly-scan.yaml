@@ -16,6 +16,7 @@ permissions:
 
 env:
   IMAGE: quay.io/oraz/vigil:latest
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   setup:
@@ -37,16 +38,13 @@ jobs:
     name: Scan ${{ matrix.component }}
     needs: setup
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        component: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
       - name: Pull Vigil image
         run: docker pull ${{ env.IMAGE }}
 
       # --go-version: GitHub Actions runners have no VPN access to gitlab.cee.redhat.com,
       # so downstream Containerfile fetch fails. Provide Go version explicitly to skip it.
+      # --color: force colored output since CI is not a TTY.
       - name: Run scan (terminal output)
         env:
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
@@ -55,8 +53,8 @@ jobs:
           docker run --rm \
             -e JIRA_API_TOKEN \
             -e JIRA_EMAIL \
-            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --short --go-version 1.25.9 \
-            2>&1 | tee ${{ matrix.component }}-scan.txt
+            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --short --go-version 1.25.9 --color \
+            2>&1 | sed 's/\x1b]8;;[^\x1b]*\x1b\\//g' | tee ${{ matrix.component }}-scan.txt
 
       - name: Run scan (HTML report)
         env:
@@ -72,15 +70,29 @@ jobs:
       - name: Post summary
         if: always()
         run: |
-          SUMMARY=$(tail -1 ${{ matrix.component }}-scan.txt | sed 's/\x1b\[[0-9;]*m//g')
-          echo "::notice title=Vigil ${{ matrix.component }}::${SUMMARY}"
+          CLEAN=$(sed 's/\x1b\[[0-9;]*m//g; s/\x1b]8;;[^\x1b]*\x1b\\//g' ${{ matrix.component }}-scan.txt)
+          SUMMARY=$(echo "${CLEAN}" | tail -1)
+          echo "::notice title=🔍 Vigil ${{ matrix.component }}::${SUMMARY}"
+
           echo "## 🔍 Vigil Scan: ${{ matrix.component }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Result:** ${SUMMARY}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          sed 's/\x1b\[[0-9;]*m//g' ${{ matrix.component }}-scan.txt | sed 's/]8;;[^\\]*\\//g' | sed 's/]8;;\\//g' >> "$GITHUB_STEP_SUMMARY"
+          echo "${CLEAN}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f ${{ matrix.component }}-report.html ]; then
+            SIZE=$(wc -c < ${{ matrix.component }}-report.html)
+            if [ "$SIZE" -gt 1000 ]; then
+              echo "<details><summary>📊 HTML Report Preview (click to expand)</summary>" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              cat ${{ matrix.component }}-report.html >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
 
       - name: Upload reports
         uses: actions/upload-artifact@v4
@@ -90,20 +102,10 @@ jobs:
             ${{ matrix.component }}-scan.txt
             ${{ matrix.component }}-report.html
           retention-days: 90
-
-      # Slack integration placeholder — uncomment and set SLACK_WEBHOOK_URL secret when ready
-      #
-      # - name: Post to Slack
-      #   if: always()
-      #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      #     SCAN_COMPONENT: ${{ matrix.component }}
-      #     SCAN_SUMMARY: ${{ steps.summary.outputs.summary }}
-      #     RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      #   run: |
-      #     curl -s -X POST "$SLACK_WEBHOOK_URL" \
-      #       -H 'Content-Type: application/json' \
-      #       --data-raw "{\"text\": \"🔍 Vigil weekly scan: *${SCAN_COMPONENT}*\n${SCAN_SUMMARY}\n<${RUN_URL}|View reports>\"}"
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJson(needs.setup.outputs.matrix) }}
 
   summary:
     name: Consolidated Summary
@@ -123,12 +125,27 @@ jobs:
         run: |
           echo "# 🔍 Vigil Weekly CVE Scan" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Component | Result | Report |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-----------|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
-            SUMMARY=$(tail -1 "$f" | sed 's/\x1b\[[0-9;]*m//g')
-            echo "| ${COMP} | ${SUMMARY} | [HTML](${RUN_URL}#artifacts) |" >> "$GITHUB_STEP_SUMMARY"
+            SUMMARY=$(sed 's/\x1b\[[0-9;]*m//g; s/\x1b]8;;[^\x1b]*\x1b\\//g' "$f" | tail -1)
+            echo "| **${COMP}** | ${SUMMARY} |" >> "$GITHUB_STEP_SUMMARY"
           done
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "📎 Download HTML reports from the Artifacts section below." >> "$GITHUB_STEP_SUMMARY"
+          echo "📎 Full HTML reports available in the **Artifacts** section at the bottom of this page." >> "$GITHUB_STEP_SUMMARY"
+
+      # Slack integration placeholder — uncomment and set SLACK_WEBHOOK_URL secret when ready
+      #
+      # - name: Post to Slack
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   run: |
+      #     for f in *-scan.txt; do
+      #       COMP=$(basename "$f" -scan.txt)
+      #       SUMMARY=$(sed 's/\x1b\[[0-9;]*m//g; s/\x1b]8;;[^\x1b]*\x1b\\//g' "$f" | tail -1)
+      #       RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #       curl -s -X POST "$SLACK_WEBHOOK_URL" \
+      #         -H 'Content-Type: application/json' \
+      #         --data-raw "{\"text\": \"🔍 Vigil weekly scan: *${COMP}*\n${SUMMARY}\n<${RUN_URL}|View reports>\"}"
+      #     done
