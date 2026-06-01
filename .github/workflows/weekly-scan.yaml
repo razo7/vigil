@@ -140,7 +140,7 @@ jobs:
             echo '```'
             echo "</details>"
             echo ""
-            echo "📎 Download the full **HTML report** from Artifacts for charts and diagrams."
+            echo "📎 Download the full **HTML report** from [Artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts) for charts and diagrams."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload reports
@@ -185,7 +185,7 @@ jobs:
               echo "| **${COMP}** | ${assessed} | ${fixable} | ${notreach} | ${disc} | ${SUMMARY} |"
             done
             echo ""
-            echo "📎 Download HTML reports from **Artifacts** below."
+            echo "📎 Download HTML reports from [Artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts) below."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Slack integration placeholder — uncomment and set SLACK_WEBHOOK_URL secret when ready

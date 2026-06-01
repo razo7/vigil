@@ -463,14 +463,23 @@ a:hover{text-decoration:underline}
 		fmt.Println()
 
 		if isVerbose && strings.HasPrefix(row.reachability, "REACHABLE") && len(row.callPaths) > 0 {
+			var frames []string
+			for _, cp := range row.callPaths {
+				parts := strings.Split(cp, " → ")
+				frames = append(frames, parts...)
+			}
+			if len(frames) > 10 {
+				frames = append(frames[:3], append([]string{"..."}, frames[len(frames)-3:]...)...)
+			}
 			fmt.Printf(`<tr><td colspan="13"><div class="mermaid">graph LR%s`, "\n")
-			for i, frame := range row.callPaths {
+			for i, frame := range frames {
+				safeFrame := strings.ReplaceAll(frame, `"`, "'")
 				nodeID := fmt.Sprintf("N%d", i)
-				nextID := fmt.Sprintf("N%d", i+1)
-				if i < len(row.callPaths)-1 {
-					fmt.Printf("    %s[\"%s\"] --> %s\n", nodeID, frame, nextID)
+				if i < len(frames)-1 {
+					nextID := fmt.Sprintf("N%d", i+1)
+					fmt.Printf("    %s[\"%s\"] --> %s\n", nodeID, safeFrame, nextID)
 				} else {
-					fmt.Printf("    %s[\"%s\"]\n", nodeID, frame)
+					fmt.Printf("    %s[\"%s\"]\n", nodeID, safeFrame)
 					fmt.Printf("    style %s fill:#d32f2f,color:#fff\n", nodeID)
 				}
 			}
