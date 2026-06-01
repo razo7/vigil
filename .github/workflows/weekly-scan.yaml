@@ -44,8 +44,7 @@ jobs:
 
       # --go-version: GitHub Actions runners have no VPN access to gitlab.cee.redhat.com,
       # so downstream Containerfile fetch fails. Provide Go version explicitly to skip it.
-      # --color: force colored output since CI is not a TTY.
-      - name: Run scan (terminal output)
+      - name: Run scan
         env:
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
@@ -53,8 +52,12 @@ jobs:
           docker run --rm \
             -e JIRA_API_TOKEN \
             -e JIRA_EMAIL \
-            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --short --go-version 1.25.9 --color \
-            2>&1 | sed 's/\x1b]8;;[^\x1b]*\x1b\\//g' | tee ${{ matrix.component }}-scan.txt
+            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --short --go-version 1.25.9 \
+            2>&1 | tee ${{ matrix.component }}-raw.txt
+
+          # Clean copy for artifact (no ANSI/OSC codes)
+          sed 's/\x1b\[[0-9;]*m//g; s/\x1b]8;;[^\x1b]*\x1b\\//g' \
+            ${{ matrix.component }}-raw.txt > ${{ matrix.component }}-scan.txt
 
       - name: Run scan (HTML report)
         env:
@@ -70,7 +73,7 @@ jobs:
       - name: Post summary
         if: always()
         run: |
-          CLEAN=$(sed 's/\x1b\[[0-9;]*m//g; s/\x1b]8;;[^\x1b]*\x1b\\//g' ${{ matrix.component }}-scan.txt)
+          CLEAN=$(cat ${{ matrix.component }}-scan.txt)
           SUMMARY=$(echo "${CLEAN}" | tail -1)
           echo "::notice title=🔍 Vigil ${{ matrix.component }}::${SUMMARY}"
 
@@ -79,23 +82,56 @@ jobs:
             echo ""
             echo "**Result:** ${SUMMARY}"
             echo ""
-            echo "${CLEAN}" | grep -E "^(SRC|Jira|GVC|Trivy)" | sed \
-              -e 's/Fixable Now/🔴🔧 Fixable Now/g' \
-              -e 's/Not Reachable/🟢✓ Not Reachable/g' \
-              -e 's/Blocked by Go/🟠⏳ Blocked by Go/g' \
-              -e 's/Not Go/🐍 Not Go/g' \
-              -e 's/Misassigned/↩️ Misassigned/g' \
-              -e 's/Critical/🔴 Critical/g' \
-              -e 's/High/🟠 High/g' \
-              -e 's/Medium/🟡 Medium/g' \
-              -e 's/Low/🟢 Low/g' \
-              -e 's/REACHABLE/🎯 REACHABLE/g' \
-              -e 's/PACKAGE-LEVEL/📦 PACKAGE-LEVEL/g' \
-              -e 's/MODULE-LEVEL/📋 MODULE-LEVEL/g' \
-              -e 's/NOT-IMPORTED/🚫 NOT-IMPORTED/g' \
-              -e 's/TEST-ONLY/🧪 TEST-ONLY/g' | while IFS= read -r line; do
-              echo "${line}  "
-            done
+
+            # Build markdown table from scan output
+            HEADER=$(echo "${CLEAN}" | grep "^SRC" | head -1)
+            if [ -n "${HEADER}" ]; then
+              # Convert space-aligned columns to markdown table
+              echo "| SRC | TICKET | CREATED | UPDATED | CVE | VERSION | LANG | STATUS | CLASSIFICATION | PRIORITY | PACKAGE | CVSS | REACHABILITY |"
+              echo "|-----|--------|---------|---------|-----|---------|------|--------|----------------|----------|---------|------|--------------|"
+              echo "${CLEAN}" | grep -E "^(Jira|GVC|Trivy)" | while IFS= read -r line; do
+                # Parse fixed-width columns into pipe-delimited
+                src=$(echo "$line" | awk '{print $1}')
+                ticket=$(echo "$line" | awk '{print $2}')
+                created=$(echo "$line" | awk '{print $3}')
+                updated=$(echo "$line" | awk '{print $4}')
+                cve=$(echo "$line" | awk '{print $5}')
+                ver=$(echo "$line" | awk '{print $6}')
+                lang=$(echo "$line" | awk '{print $7}')
+                status=$(echo "$line" | awk '{print $8}')
+                # Classification and beyond are multi-word, grab from known positions
+                rest=$(echo "$line" | sed 's/^[^ ]* *[^ ]* *[^ ]* *[^ ]* *[^ ]* *[^ ]* *[^ ]* *[^ ]* *//')
+                class=$(echo "$rest" | awk '{print $1" "$2}')
+                prio=$(echo "$rest" | awk '{print $3}')
+                pkg=$(echo "$rest" | awk '{print $4}')
+                cvss=$(echo "$rest" | awk '{print $5}')
+                reach=$(echo "$rest" | awk '{for(i=6;i<=NF;i++) printf "%s ", $i; print ""}' | sed 's/ *$//')
+
+                # Add emojis
+                case "$class" in
+                  *"Fixable Now"*) class="🔴🔧 Fixable Now" ;;
+                  *"Not Reachable"*) class="🟢✓ Not Reachable" ;;
+                  *"Blocked"*) class="🟠⏳ Blocked" ;;
+                  *"Not Go"*) class="🐍 Not Go" ;;
+                  *"Misassigned"*) class="↩️ Misassigned" ;;
+                esac
+                case "$prio" in
+                  Critical) prio="🔴 Critical" ;;
+                  High) prio="🟠 High" ;;
+                  Medium) prio="🟡 Medium" ;;
+                  Low) prio="🟢 Low" ;;
+                esac
+                case "$reach" in
+                  REACHABLE*) reach="🎯 $reach" ;;
+                  PACKAGE*) reach="📦 $reach" ;;
+                  MODULE*) reach="📋 $reach" ;;
+                  NOT-IMPORTED*) reach="🚫 $reach" ;;
+                  TEST-ONLY*) reach="🧪 $reach" ;;
+                esac
+
+                echo "| $src | $ticket | $created | $updated | $cve | $ver | $lang | $status | $class | $prio | $pkg | $cvss | $reach |"
+              done
+            fi
             echo ""
             echo "<details><summary>📄 Raw scan output</summary>"
             echo ""
@@ -133,20 +169,24 @@ jobs:
           merge-multiple: true
 
       - name: Build consolidated summary
-        env:
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          echo "# 🔍 Vigil Weekly CVE Scan" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Component | Result |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          for f in *-scan.txt; do
-            COMP=$(basename "$f" -scan.txt)
-            SUMMARY=$(sed 's/\x1b\[[0-9;]*m//g; s/\x1b]8;;[^\x1b]*\x1b\\//g' "$f" | tail -1)
-            echo "| **${COMP}** | ${SUMMARY} |" >> "$GITHUB_STEP_SUMMARY"
-          done
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "📎 Full HTML reports available in the **Artifacts** section at the bottom of this page." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "# 🔍 Vigil Weekly CVE Scan"
+            echo ""
+            echo "| Component | Assessed | Fixable | Not Reachable | Discovered | Full Result |"
+            echo "|-----------|----------|---------|---------------|------------|-------------|"
+            for f in *-scan.txt; do
+              COMP=$(basename "$f" -scan.txt)
+              SUMMARY=$(tail -1 "$f")
+              assessed=$(echo "$SUMMARY" | grep -oP '\d+ assessed' || echo "0 assessed")
+              fixable=$(echo "$SUMMARY" | grep -oP '\d+ fixable' || echo "0 fixable")
+              notreach=$(echo "$SUMMARY" | grep -oP '\d+ not-reachable' || echo "0 not-reachable")
+              disc=$(echo "$SUMMARY" | grep -oP '\d+ discovered[^,]*' || echo "0 discovered")
+              echo "| **${COMP}** | ${assessed} | ${fixable} | ${notreach} | ${disc} | ${SUMMARY} |"
+            done
+            echo ""
+            echo "📎 Download HTML reports from **Artifacts** below."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Slack integration placeholder — uncomment and set SLACK_WEBHOOK_URL secret when ready
       #
@@ -156,9 +196,9 @@ jobs:
       #   run: |
       #     for f in *-scan.txt; do
       #       COMP=$(basename "$f" -scan.txt)
-      #       SUMMARY=$(sed 's/\x1b\[[0-9;]*m//g; s/\x1b]8;;[^\x1b]*\x1b\\//g' "$f" | tail -1)
+      #       SUMMARY=$(tail -1 "$f")
       #       RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       #       curl -s -X POST "$SLACK_WEBHOOK_URL" \
       #         -H 'Content-Type: application/json' \
-      #         --data-raw "{\"text\": \"🔍 Vigil weekly scan: *${COMP}*\n${SUMMARY}\n<${RUN_URL}|View reports>\"}"
+      #         --data-raw "{\"text\": \"🔍 Vigil weekly: *${COMP}*\n${SUMMARY}\n<${RUN_URL}|View>\"}"
       #     done
