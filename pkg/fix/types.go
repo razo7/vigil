@@ -44,25 +44,34 @@ type StrategyResult struct {
 }
 
 type Options struct {
-	TicketID     string
-	RepoPath     string
-	Strategy     StrategyName
-	DryRun       bool
-	ApproveMajor bool
-	CreatePR     bool
-	Jira         bool
-	RunTests     bool
+	TicketID       string
+	RepoPath       string
+	Strategy       StrategyName
+	DryRun         bool
+	ApproveMajor   bool
+	CreatePR       bool
+	Jira           bool
+	RunTests       bool
+	SecurityReview bool
+}
+
+type VariantVuln struct {
+	CVEID        string `json:"cve_id"`
+	Package      string `json:"package"`
+	Reachability string `json:"reachability"`
 }
 
 type Result struct {
-	TicketID   string            `json:"ticket_id"`
-	CVEID      string            `json:"cve_id"`
-	Strategy   StrategyName      `json:"strategy"`
-	Risk       int               `json:"risk"`
-	Validation *ValidationResult `json:"validation,omitempty"`
-	PRURL      string            `json:"pr_url,omitempty"`
-	Assessment *types.Result     `json:"assessment,omitempty"`
-	DryRun     bool              `json:"dry_run"`
+	TicketID         string            `json:"ticket_id"`
+	CVEID            string            `json:"cve_id"`
+	Strategy         StrategyName      `json:"strategy"`
+	Risk             int               `json:"risk"`
+	Validation       *ValidationResult `json:"validation,omitempty"`
+	PRURL            string            `json:"pr_url,omitempty"`
+	Assessment       *types.Result     `json:"assessment,omitempty"`
+	DryRun           bool              `json:"dry_run"`
+	SecurityWarnings []string          `json:"security_warnings,omitempty"`
+	Variants         []VariantVuln     `json:"variants,omitempty"`
 }
 
 type StepResult struct {

@@ -3,6 +3,7 @@ package fix
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/razo7/vigil/pkg/assess"
@@ -124,14 +125,25 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		}
 
 		if validation.Passed {
+			var securityWarnings []string
+			if opts.SecurityReview {
+				warnings, secErr := SecurityReview(scanPath)
+				if secErr != nil {
+					fmt.Fprintf(os.Stderr, "WARNING: security review failed: %v\n", secErr)
+				} else {
+					securityWarnings = warnings
+				}
+			}
+
 			result := &Result{
-				TicketID:   opts.TicketID,
-				CVEID:      cveID,
-				Strategy:   strat.Name(),
-				Risk:       strat.Risk(),
-				Validation: validation,
-				Assessment: assessment,
-				DryRun:     false,
+				TicketID:         opts.TicketID,
+				CVEID:            cveID,
+				Strategy:         strat.Name(),
+				Risk:             strat.Risk(),
+				Validation:       validation,
+				Assessment:       assessment,
+				DryRun:           false,
+				SecurityWarnings: securityWarnings,
 			}
 
 			if opts.CreatePR {
@@ -148,12 +160,20 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 				for _, s := range validation.Steps {
 					steps = append(steps, pr.ValidationStep{Name: s.Name, Passed: s.Passed})
 				}
-				prOpts.Description = pr.FormatDescriptionWithValidation(prOpts, steps)
+				prOpts.Description = pr.FormatDescriptionWithValidation(prOpts, steps, securityWarnings)
 				prResult, err := pr.Create(prOpts)
 				if err != nil {
 					return result, fmt.Errorf("fix succeeded but PR creation failed: %w", err)
 				}
 				result.PRURL = prResult.PRURL
+			}
+
+			variants, varErr := CheckVariants(scanPath, pkg, cveID)
+			if varErr != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: variant analysis failed: %v\n", varErr)
+			} else {
+				PrintVariantWarnings(pkg, variants)
+				result.Variants = variants
 			}
 
 			return result, nil

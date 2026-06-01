@@ -10,13 +10,14 @@ import (
 )
 
 var (
-	fixStrategy     string
-	fixDryRun       bool
-	fixJira         bool
-	fixApproveMajor bool
-	fixRepoPath     string
-	fixCreatePR     bool
-	fixRunTests     bool
+	fixStrategy       string
+	fixDryRun         bool
+	fixJira           bool
+	fixApproveMajor   bool
+	fixRepoPath       string
+	fixCreatePR       bool
+	fixRunTests       bool
+	fixSecurityReview bool
 )
 
 var fixCmd = &cobra.Command{
@@ -30,14 +31,15 @@ validate with govulncheck, and optionally create a draft PR and update Jira.`,
 		ticketID := args[0]
 
 		result, err := fix.Run(cmd.Context(), fix.Options{
-			TicketID:     ticketID,
-			RepoPath:     fixRepoPath,
-			Strategy:     fix.StrategyName(fixStrategy),
-			DryRun:       fixDryRun,
-			ApproveMajor: fixApproveMajor,
-			CreatePR:     fixCreatePR,
-			Jira:         fixJira,
-			RunTests:     fixRunTests,
+			TicketID:       ticketID,
+			RepoPath:       fixRepoPath,
+			Strategy:       fix.StrategyName(fixStrategy),
+			DryRun:         fixDryRun,
+			ApproveMajor:   fixApproveMajor,
+			CreatePR:       fixCreatePR,
+			Jira:           fixJira,
+			RunTests:       fixRunTests,
+			SecurityReview: fixSecurityReview,
 		})
 
 		if result != nil {
@@ -93,5 +95,6 @@ func init() {
 	fixCmd.Flags().StringVar(&fixRepoPath, "repo-path", "", "Override repo path")
 	fixCmd.Flags().BoolVar(&fixCreatePR, "pr", true, "Create draft PR")
 	fixCmd.Flags().BoolVar(&fixRunTests, "test", false, "Run go test in validation")
+	fixCmd.Flags().BoolVar(&fixSecurityReview, "security-review", false, "Run security review on fix diff before PR")
 	rootCmd.AddCommand(fixCmd)
 }
