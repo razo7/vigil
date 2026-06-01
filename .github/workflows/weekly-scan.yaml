@@ -1,0 +1,89 @@
+name: Weekly CVE Scan
+
+on:
+  schedule:
+    # Every Monday at 07:03 UTC (off-minute to avoid :00 stampede)
+    - cron: '3 7 * * 1'
+  workflow_dispatch:
+    inputs:
+      components:
+        description: 'Comma-separated components (default: all)'
+        default: 'FAR,MDR,NHC,SNR,NMO'
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: quay.io/oraz/vigil:latest
+
+jobs:
+  scan:
+    name: Scan ${{ matrix.component }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        component:
+          - FAR
+          - MDR
+          - NHC
+          - SNR
+          - NMO
+    steps:
+      - name: Pull Vigil image
+        run: docker pull ${{ env.IMAGE }}
+
+      - name: Run scan (terminal output)
+        env:
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          GITLAB_PRIVATE_TOKEN: ${{ secrets.GITLAB_PRIVATE_TOKEN }}
+        run: |
+          docker run --rm \
+            -e JIRA_API_TOKEN \
+            -e JIRA_EMAIL \
+            -e GITLAB_PRIVATE_TOKEN \
+            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --short \
+            2>&1 | tee ${{ matrix.component }}-scan.txt
+
+      - name: Run scan (HTML report)
+        env:
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          GITLAB_PRIVATE_TOKEN: ${{ secrets.GITLAB_PRIVATE_TOKEN }}
+        run: |
+          docker run --rm \
+            -e JIRA_API_TOKEN \
+            -e JIRA_EMAIL \
+            -e GITLAB_PRIVATE_TOKEN \
+            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --format html --verbose \
+            > ${{ matrix.component }}-report.html 2>${{ matrix.component }}-html-stderr.txt || true
+
+      - name: Extract summary
+        id: summary
+        run: |
+          SUMMARY=$(tail -1 ${{ matrix.component }}-scan.txt | sed 's/\x1b\[[0-9;]*m//g')
+          echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: vigil-${{ matrix.component }}-${{ github.run_number }}
+          path: |
+            ${{ matrix.component }}-scan.txt
+            ${{ matrix.component }}-report.html
+          retention-days: 90
+
+      # Slack integration placeholder — uncomment and set SLACK_WEBHOOK_URL secret when ready
+      #
+      # - name: Post to Slack
+      #   if: always()
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #     SCAN_COMPONENT: ${{ matrix.component }}
+      #     SCAN_SUMMARY: ${{ steps.summary.outputs.summary }}
+      #     RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      #   run: |
+      #     curl -s -X POST "$SLACK_WEBHOOK_URL" \
+      #       -H 'Content-Type: application/json' \
+      #       --data-raw "{\"text\": \"🔍 Vigil weekly scan: *${SCAN_COMPONENT}*\n${SCAN_SUMMARY}\n<${RUN_URL}|View reports>\"}"
