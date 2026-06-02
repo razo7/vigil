@@ -154,15 +154,40 @@ xdg-open far-report.html
 
 Produces a standalone HTML file with colored classification/priority badges, clickable Jira and CVE links, sticky headers, and hover highlighting. The terminal `--short` output uses ANSI colors; `--format html` preserves the same color scheme for browsers.
 
-**Color legend (applies to both terminal and HTML output):**
+**Classification decision tree:**
 
-| Emoji | Classification | Meaning |
-|-------|---------------|---------|
-| 🔴🔧 | Fixable Now | Fix available, downstream supports it |
-| 🟠⏳ | Blocked by Go | Fix needs newer Go than downstream provides |
-| 🟢✓ | Not Reachable | Vuln in dependency but no call path |
-| 🐍 | Not Go | Python/non-Go CVE |
-| ↩️ | Misassigned | Wrong image or EOL version |
+```
+1. Is it a Go CVE?
+   ├─ No → ❓ Unknown (manual review)
+   └─ Yes ↓
+2. Is the image a bundle (OLM metadata)?
+   ├─ Yes + Go CVE → ↩️ Misassigned
+   ├─ Yes + non-Go → ❓ Unknown (check if bundle uses it)
+   └─ No ↓
+3. Is the operator version EOL?
+   ├─ Yes → ↩️ EOL
+   └─ No ↓
+4. Is the code reachable? (govulncheck + fix-function match)
+   ├─ Not imported → 🟢 No action
+   ├─ Module-level only → 🟢 No action
+   ├─ Fix-function mismatch → 🟢 No action (verified via Gerrit CL)
+   └─ Reachable or package-level ↓
+5. Is the fix deployable? (downstream Go version via skopeo)
+   ├─ Needs newer Go → 🟠⏳ Blocked
+   └─ Deployable ↓
+6. Which supported versions are affected?
+   └─ 🔴🔧 Fix on v0.2, v0.4, ...
+```
+
+**Color legend:**
+
+| Emoji | ACTION | Meaning |
+|-------|--------|---------|
+| 🔴🔧 | Fix on v0.2, v0.4 | Specific versions needing fix |
+| 🟠⏳ | Blocked (Go X.Y.Z) | Fix needs newer Go than downstream |
+| 🟢 | No action | Not reachable / not imported |
+| ❓ | Manual review | Non-Go or ambiguous CVE |
+| ↩️ | Misassigned / EOL | Wrong target or unsupported version |
 
 | Emoji | Reachability | Meaning |
 |-------|-------------|---------|
@@ -171,6 +196,8 @@ Produces a standalone HTML file with colored classification/priority badges, cli
 | 📦 | PACKAGE-LEVEL | Package imported but no direct call path |
 | 📋 | MODULE-LEVEL | In go.mod only, package not imported |
 | 🚫 | NOT-IMPORTED | Affected package not imported at all |
+
+See [docs/v0.0.4/action-column-design.md](docs/v0.0.4/action-column-design.md) for full design.
 
 ### Custom Jira instance
 
