@@ -320,11 +320,11 @@ func runCombinedScan() error {
 	operatorName := assess.DeriveOperatorName(loadComponentMap()[strings.ToLower(scanComponent)])
 	supportedVersions := lifecycle.SupportedOperatorVersions(operatorName)
 	if repoPath != "" && len(supportedVersions) > 0 {
-		seenCVEs := make(map[string]bool)
+		cveBranches := make(map[string][]string)
 		if discResult != nil {
 			for _, v := range discResult.Vulns {
 				for _, cve := range v.CVEIDs {
-					seenCVEs[cve] = true
+					cveBranches[cve] = append(cveBranches[cve], "main")
 				}
 			}
 		}
@@ -352,10 +352,20 @@ func runCombinedScan() error {
 			newCount := 0
 			for _, entry := range branchResult.Vulns {
 				for _, alias := range entry.Aliases {
-					if seenCVEs[alias] {
+					if existing := cveBranches[alias]; len(existing) > 0 {
+						cveBranches[alias] = append(cveBranches[alias], branch)
+						if discResult != nil {
+							for i := range discResult.Vulns {
+								for _, cve := range discResult.Vulns[i].CVEIDs {
+									if cve == alias {
+										discResult.Vulns[i].Source += "+" + branch
+									}
+								}
+							}
+						}
 						continue
 					}
-					seenCVEs[alias] = true
+					cveBranches[alias] = []string{branch}
 					newCount++
 					if discResult == nil {
 						discResult = &types.DiscoverResult{}
@@ -385,7 +395,7 @@ func runCombinedScan() error {
 				}
 			}
 			if newCount > 0 {
-				fmt.Fprintf(os.Stderr, "  %s: %d additional CVEs found\n", branch, newCount)
+				fmt.Fprintf(os.Stderr, "  %s: %d new CVEs, others confirmed on this branch too\n", branch, newCount)
 			}
 		}
 	}
