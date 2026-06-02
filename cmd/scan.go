@@ -925,6 +925,13 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		summary = append(summary, fmt.Sprintf("%d errors", len(errors)))
 	}
 	fmt.Println(strings.Join(summary, ", "))
+
+	threshold := getConfig().EOLThresholdDuration()
+	if threshold > 0 {
+		fmt.Fprintf(os.Stderr, "ℹ️  Versions with <%s remaining support are deprioritized (--eol-threshold)\n", getConfig().EOLThreshold)
+	} else if isTTY {
+		fmt.Fprintf(os.Stderr, "💡 Tip: use --eol-threshold 90d to deprioritize versions nearing end of support\n")
+	}
 }
 
 func statusRank(status string) int {

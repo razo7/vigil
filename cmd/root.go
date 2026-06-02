@@ -32,13 +32,19 @@ or misassigned.`,
 		} else {
 			appConfig = config.Default()
 		}
+		if eolThreshold != "" {
+			appConfig.EOLThreshold = eolThreshold
+		}
 		return applyLifecycleConfig(appConfig)
 	},
 }
 
+var eolThreshold string
+
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&forceColor, "color", false, "Force colored output (useful in containers)")
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "Path to vigil.yaml config file (default: built-in component map)")
+	rootCmd.PersistentFlags().StringVar(&eolThreshold, "eol-threshold", "", "Skip versions with less remaining support (e.g., 30d, 90d, 6m, 1y)")
 }
 
 func Execute() error {

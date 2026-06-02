@@ -4,6 +4,12 @@ jira:
     - RHWA
     - ECOPROJECT
 
+# Minimum remaining support time to consider a version worth fixing.
+# Versions with less support time remaining are deprioritized in ACTION column.
+# Default: 0 (all supported versions are included). Set to 90d to skip versions
+# nearing end of support. Accepts: 0, 30d, 90d, 6m, 1y
+# eol_threshold: "90d"
+
 # Downstream base image: brew.registry.redhat.io/rh-osbs/openshift-golang-builder
 # Fetched via skopeo on 2026-06-02 with VPN access to gitlab.cee.redhat.com
 # Per-branch Go versions from downstream Containerfile.<operator>

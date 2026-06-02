@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestDefault(t *testing.T) {
@@ -132,6 +133,28 @@ components:
 	}
 	if cfg.Jira.ProjectJQL() != "project = MYPROJ" {
 		t.Errorf("ProjectJQL() = %q", cfg.Jira.ProjectJQL())
+	}
+}
+
+func TestEOLThreshold(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected time.Duration
+	}{
+		{"", 0},
+		{"0", 0},
+		{"30d", 30 * 24 * time.Hour},
+		{"90d", 90 * 24 * time.Hour},
+		{"6m", 180 * 24 * time.Hour},
+		{"1y", 365 * 24 * time.Hour},
+		{"invalid", 90 * 24 * time.Hour},
+	}
+	for _, tt := range tests {
+		cfg := &Config{EOLThreshold: tt.input}
+		got := cfg.EOLThresholdDuration()
+		if got != tt.expected {
+			t.Errorf("EOLThresholdDuration(%q) = %v, want %v", tt.input, got, tt.expected)
+		}
 	}
 }
 

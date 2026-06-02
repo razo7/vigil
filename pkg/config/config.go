@@ -4,14 +4,50 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Jira       JiraConfig                 `yaml:"jira"`
-	Components map[string]ComponentConfig `yaml:"components"`
-	Lifecycle  LifecycleConfig            `yaml:"lifecycle"`
+	Jira         JiraConfig                 `yaml:"jira"`
+	Components   map[string]ComponentConfig `yaml:"components"`
+	Lifecycle    LifecycleConfig            `yaml:"lifecycle"`
+	EOLThreshold string                     `yaml:"eol_threshold"`
+}
+
+func (c *Config) EOLThresholdDuration() time.Duration {
+	s := c.EOLThreshold
+	if s == "" || s == "0" {
+		return 0
+	}
+	s = strings.TrimSpace(s)
+	defaultDur := 90 * 24 * time.Hour
+	if strings.HasSuffix(s, "d") {
+		days := 0
+		fmt.Sscanf(s, "%dd", &days)
+		if days > 0 {
+			return time.Duration(days) * 24 * time.Hour
+		}
+		return defaultDur
+	}
+	if strings.HasSuffix(s, "m") {
+		months := 0
+		fmt.Sscanf(s, "%dm", &months)
+		if months > 0 {
+			return time.Duration(months) * 30 * 24 * time.Hour
+		}
+		return defaultDur
+	}
+	if strings.HasSuffix(s, "y") {
+		years := 0
+		fmt.Sscanf(s, "%dy", &years)
+		if years > 0 {
+			return time.Duration(years) * 365 * 24 * time.Hour
+		}
+		return defaultDur
+	}
+	return defaultDur
 }
 
 type LifecycleConfig struct {
