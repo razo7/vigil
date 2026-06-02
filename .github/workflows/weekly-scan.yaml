@@ -99,55 +99,10 @@ jobs:
             echo "**Result:** ${SUMMARY}"
             echo ""
 
-            # Build markdown table from scan output
-            HEADER=$(echo "${CLEAN}" | grep "^SRC" | head -1)
-            if [ -n "${HEADER}" ]; then
-              # Convert space-aligned columns to markdown table
-              echo "| SRC | TICKET | CREATED | UPDATED | CVE | VERSION | LANG | STATUS | CLASSIFICATION | PRIORITY | PACKAGE | CVSS | REACHABILITY |"
-              echo "|-----|--------|---------|---------|-----|---------|------|--------|----------------|----------|---------|------|--------------|"
-              echo "${CLEAN}" | grep -E "^(Jira |GVC  |Trivy )" | grep -v "Trivy found" | while IFS= read -r line; do
-                # Parse fixed-width columns into pipe-delimited
-                src=$(echo "$line" | awk '{print $1}')
-                ticket=$(echo "$line" | awk '{print $2}')
-                created=$(echo "$line" | awk '{print $3}')
-                updated=$(echo "$line" | awk '{print $4}')
-                cve=$(echo "$line" | awk '{print $5}')
-                ver=$(echo "$line" | awk '{print $6}')
-                lang=$(echo "$line" | awk '{print $7}')
-                status=$(echo "$line" | awk '{print $8}')
-                # Classification and beyond are multi-word, grab from known positions
-                rest=$(echo "$line" | sed 's/^[^ ]* *[^ ]* *[^ ]* *[^ ]* *[^ ]* *[^ ]* *[^ ]* *[^ ]* *//')
-                class=$(echo "$rest" | awk '{print $1" "$2}')
-                prio=$(echo "$rest" | awk '{print $3}')
-                pkg=$(echo "$rest" | awk '{print $4}')
-                cvss=$(echo "$rest" | awk '{print $5}')
-                reach=$(echo "$rest" | awk '{for(i=6;i<=NF;i++) printf "%s ", $i; print ""}' | sed 's/ *$//')
-
-                # Add emojis
-                case "$class" in
-                  *"Fixable Now"*) class="🔴🔧 Fixable Now" ;;
-                  *"Not Reachable"*) class="🟢✓ Not Reachable" ;;
-                  *"Blocked"*) class="🟠⏳ Blocked" ;;
-                  *"Not Go"*) class="🐍 Not Go" ;;
-                  *"Misassigned"*) class="↩️ Misassigned" ;;
-                esac
-                case "$prio" in
-                  Critical) prio="🔴 Critical" ;;
-                  High) prio="🟠 High" ;;
-                  Medium) prio="🟡 Medium" ;;
-                  Low) prio="🟢 Low" ;;
-                esac
-                case "$reach" in
-                  REACHABLE*) reach="🎯 $reach" ;;
-                  PACKAGE*) reach="📦 $reach" ;;
-                  MODULE*) reach="📋 $reach" ;;
-                  NOT-IMPORTED*) reach="🚫 $reach" ;;
-                  TEST-ONLY*) reach="🧪 $reach" ;;
-                esac
-
-                echo "| $src | $ticket | $created | $updated | $cve | $ver | $lang | $status | $class | $prio | $pkg | $cvss | $reach |"
-              done
-            fi
+            # Render scan table — output already has emojis in ACTION column
+            echo '```'
+            echo "${CLEAN}" | grep -E "^(SRC|Jira |GVC  |Trivy |─)" | grep -v "Trivy found"
+            echo '```'
             echo ""
             echo "<details><summary>📄 Raw scan output</summary>"
             echo ""

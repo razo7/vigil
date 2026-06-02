@@ -326,14 +326,17 @@ a:hover{text-decoration:underline}
 .filter-bar{margin:12px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
 .filter-bar label{font-weight:600;color:#586069}
 .filter-bar select{padding:4px 8px;border-radius:4px;border:1px solid #d1d5da}
-.mermaid{margin:8px 0 16px;padding:12px;background:#f6f8fa;border-radius:6px}
-details .mermaid{min-width:600px;overflow-x:auto}
-.mermaid-actions{display:inline-flex;gap:8px;align-items:center}
-.fullview-btn{background:none;border:1px solid #d1d5da;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px}
-.fullview-btn:hover{background:#f6f8fa}
-.mermaid-modal{display:none;position:fixed;top:0;left:0;width:100%%;height:100%%;background:rgba(0,0,0,0.8);z-index:1000;padding:40px;overflow:auto}
+.mermaid{margin:8px 0 16px;padding:16px;background:#f6f8fa;border-radius:6px;font-size:14px}
+.mermaid svg{min-width:800px;min-height:200px}
+details .mermaid{min-width:900px;overflow-x:auto;padding:20px}
+.mermaid-actions{display:flex;gap:8px;align-items:center;margin-top:4px}
+.fullview-btn{background:#0366d6;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600}
+.fullview-btn:hover{background:#0256b9}
+.mermaid-modal{display:none;position:fixed;top:0;left:0;width:100%%;height:100%%;background:rgba(0,0,0,0.85);z-index:1000;padding:20px;overflow:auto}
 .mermaid-modal.active{display:flex;align-items:center;justify-content:center}
-.mermaid-modal .mermaid-modal-content{background:#fff;padding:24px;border-radius:8px;max-width:95%%;overflow-x:auto}
+.mermaid-modal .mermaid-modal-content{background:#fff;padding:32px;border-radius:12px;width:95%%;max-height:90vh;overflow:auto}
+.mermaid-modal .mermaid-modal-content .mermaid{min-width:100%%;font-size:16px}
+.mermaid-modal .mermaid-modal-content .mermaid svg{min-width:100%%;min-height:400px}
 .mermaid-modal .close{position:absolute;top:16px;right:24px;color:#fff;font-size:32px;cursor:pointer}
 .version-tabs{display:flex;gap:0;margin:16px 0 0;border-bottom:2px solid #e1e4e8}
 .version-tab{padding:8px 16px;cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:600;color:#586069;background:#f6f8fa}
@@ -615,7 +618,7 @@ func buildImportChainMermaid(row combinedRow, reachDisplay string) string {
 		mermaid.WriteString(mermaidClickDirective(nodeID, frame, true))
 	}
 
-	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>import chain</summary><div class="mermaid">%s</div></details>`+
+	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>📦 import chain</summary><div class="mermaid">%s</div></details>`+
 		`<button class="fullview-btn" onclick="openMermaidModal(this)">Full view</button></div>`,
 		reachDisplay, mermaid.String())
 }
@@ -651,7 +654,7 @@ func buildCallPathMermaid(row combinedRow, reachDisplay string) string {
 		mermaid.WriteString(mermaidClickDirective(nodeID, frame, false))
 	}
 
-	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>call path</summary><div class="mermaid">%s</div></details>`+
+	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>🔎 call path</summary><div class="mermaid">%s</div></details>`+
 		`<button class="fullview-btn" onclick="openMermaidModal(this)">Full view</button></div>`,
 		reachDisplay, mermaid.String())
 }
@@ -700,7 +703,7 @@ func mermaidClickForCallPath(nodeID, frame string) string {
 	if strings.HasPrefix(filename, "pkg/") || strings.HasPrefix(filename, "cmd/") ||
 		strings.HasPrefix(filename, "internal/") || strings.HasPrefix(filename, "test/") ||
 		strings.HasPrefix(filename, "e2e/") {
-		return ""
+		return fmt.Sprintf("    click %s \"#\" \"Operator source: %s\"\n", nodeID, filename)
 	}
 
 	modPath := extractModulePath(filename)
