@@ -18,7 +18,7 @@ const (
 func Decide(result *types.Result) Route {
 	class := result.Recommendation.Classification
 
-	if class == types.NotGo || class == types.Misassigned {
+	if class == types.Unknown || class == types.Misassigned {
 		return RouteManual
 	}
 	if class == types.NotReachable {

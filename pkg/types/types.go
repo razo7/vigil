@@ -8,7 +8,7 @@ const (
 	FixableNow   Classification = "Fixable Now"
 	BlockedByGo  Classification = "Blocked by Go"
 	NotReachable Classification = "Not Reachable"
-	NotGo        Classification = "Not Go"
+	Unknown      Classification = "Unknown"
 	Misassigned  Classification = "Misassigned"
 )
 

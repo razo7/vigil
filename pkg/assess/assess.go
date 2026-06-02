@@ -790,7 +790,7 @@ func generateRecommendation(r *types.Result) string {
 		}
 	case types.NotReachable:
 		return "Vulnerable code path not called. Low priority — bump if easy, otherwise document."
-	case types.NotGo:
+	case types.Unknown:
 		return fmt.Sprintf("Non-Go vulnerability in %s. Requires manual review of container image dependencies.", pkg)
 	case types.Misassigned:
 		return fmt.Sprintf("Ticket appears misassigned: %s. Recommend reassignment to correct component.", r.Recommendation.MisassignReason)

@@ -166,7 +166,7 @@ type SanitizedSummary struct {
 	FixableNow   int    `json:"fixable_now"`
 	BlockedByGo  int    `json:"blocked_by_go"`
 	NotReachable int    `json:"not_reachable"`
-	NotGo        int    `json:"not_go"`
+	Unknown      int    `json:"unknown"`
 	Misassigned  int    `json:"misassigned"`
 	CurrentGo    string `json:"current_go"`
 	NeededGo     string `json:"needed_go"`
@@ -192,8 +192,8 @@ func WriteSanitizedSummary(path string, r *types.Result) error {
 		summary.BlockedByGo = 1
 	case types.NotReachable:
 		summary.NotReachable = 1
-	case types.NotGo:
-		summary.NotGo = 1
+	case types.Unknown:
+		summary.Unknown = 1
 	case types.Misassigned:
 		summary.Misassigned = 1
 	}

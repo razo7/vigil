@@ -106,14 +106,14 @@ func TestClassify_PackageLevel_FixableNow(t *testing.T) {
 	}
 }
 
-func TestClassify_NotGo(t *testing.T) {
+func TestClassify_Unknown(t *testing.T) {
 	in := Input{
 		IsGoVuln: false,
 	}
 
 	class, priority, _ := Classify(in)
-	if class != types.NotGo {
-		t.Errorf("expected not-go, got %s", class)
+	if class != types.Unknown {
+		t.Errorf("expected unknown, got %s", class)
 	}
 	if priority != types.PriorityManual {
 		t.Errorf("expected Needs manual review, got %s", priority)

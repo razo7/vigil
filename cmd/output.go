@@ -160,7 +160,7 @@ func colorForValue(key, val string) string {
 			return colorLow
 		case "Misassigned":
 			return colorNull
-		case "Not Go":
+		case "Unknown":
 			return colorMed
 		}
 	case "reachability":
@@ -248,7 +248,7 @@ func htmlClassColor(c types.Classification) string {
 		return "#f57c00"
 	case types.NotReachable:
 		return "#388e3c"
-	case types.NotGo:
+	case types.Unknown:
 		return "#fbc02d"
 	case types.Misassigned:
 		return "#9e9e9e"
@@ -361,7 +361,7 @@ details .mermaid{min-width:600px;overflow-x:auto}
 	printHTMLVersionTabs(uniqueVersions)
 
 	fmt.Println(`<table id="scanTable"><thead><tr>
-<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">CVE</th><th onclick="sortTable(5)">VERSION</th><th onclick="sortTable(6)">LANG</th><th onclick="sortTable(7)">STATUS</th><th onclick="sortTable(8)">CLASSIFICATION</th><th onclick="sortTable(9)">PRIORITY</th><th onclick="sortTable(10)">PACKAGE</th><th onclick="sortTable(11)">CVSS</th><th onclick="sortTable(12)">REACHABILITY</th><th onclick="sortTable(13)">BACKPORT</th>
+<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">CVE</th><th onclick="sortTable(5)">VERSION</th><th onclick="sortTable(6)">LANG</th><th onclick="sortTable(7)">STATUS</th><th onclick="sortTable(8)">ACTION</th><th onclick="sortTable(9)">PRIORITY</th><th onclick="sortTable(10)">PACKAGE</th><th onclick="sortTable(11)">CVSS</th><th onclick="sortTable(12)">REACHABILITY</th>
 </tr></thead><tbody>`)
 
 	for _, row := range rows {
@@ -408,7 +408,7 @@ func printHTMLDonutChart(classCounts map[types.Classification]int, total int) {
 			{"Fixable Now", classCounts[types.FixableNow], "#d32f2f"},
 			{"Not Reachable", classCounts[types.NotReachable], "#388e3c"},
 			{"Blocked by Go", classCounts[types.BlockedByGo], "#f57c00"},
-			{"Not Go", classCounts[types.NotGo], "#fbc02d"},
+			{"Unknown", classCounts[types.Unknown], "#fbc02d"},
 			{"Misassigned", classCounts[types.Misassigned], "#9e9e9e"},
 		}
 		fmt.Println(`<svg viewBox="0 0 200 200" width="180" height="180">`)
@@ -491,12 +491,13 @@ func printHTMLActionItems(rows []combinedRow) {
 
 func printHTMLFilterBar(versions []string) {
 	fmt.Println(`<div class="filter-bar">`)
-	fmt.Println(`<label>Classification:</label><select id="classFilter" onchange="filterTable()">
+	fmt.Println(`<label>Action:</label><select id="actionFilter" onchange="filterTable()">
 <option value="">All</option>
-<option value="Fixable Now">Fixable Now</option>
-<option value="Not Reachable">Not Reachable</option>
-<option value="Blocked by Go">Blocked by Go</option>
-<option value="Not Go">Not Go</option>
+<option value="Fix on">Fix</option>
+<option value="Blocked">Blocked</option>
+<option value="No action">No action</option>
+<option value="Manual review">Manual review</option>
+<option value="EOL">EOL</option>
 <option value="Misassigned">Misassigned</option>
 </select>`)
 	fmt.Println(`<label>Priority:</label><select id="prioFilter" onchange="filterTable()">
@@ -505,14 +506,6 @@ func printHTMLFilterBar(versions []string) {
 <option value="High">High</option>
 <option value="Medium">Medium</option>
 <option value="Low">Low</option>
-</select>`)
-	fmt.Println(`<label>Backport:</label><select id="bpFilter" onchange="filterTable()">
-<option value="">All</option>
-<option value="Fix latest">Fix latest</option>
-<option value="Fix + backport">Fix + backport</option>
-<option value="Backport only">Backport only</option>
-<option value="No">No</option>
-<option value="N/A">N/A</option>
 </select>`)
 	if len(versions) > 1 {
 		fmt.Println(`<label>Version:</label><select id="verFilter" onchange="filterTable()">`)
@@ -554,21 +547,19 @@ func printHTMLTableRow(row combinedRow, latestVersion string, cveVersions map[st
 	if row.cveURL != "" {
 		cveCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.cveURL, row.cveID)
 	}
-	classCell := fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, htmlClassColor(row.classification), row.classification)
+	actionCell := htmlAction(row, latestVersion, cveVersions)
 	prioCell := fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, htmlPrioColor(row.priority), shortPriority(row.priority))
 
 	reachDisplay := buildReachDisplay(row)
 	reachCell := buildReachCell(row, reachDisplay)
-
-	bpCell := backportVerdict(row.cveID, row.version, latestVersion, cveVersions, row.classification)
 
 	versionAttr := row.version
 	if versionAttr == "" {
 		versionAttr = "main"
 	}
 
-	fmt.Printf(`<tr id="%s" data-version="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td><td>%s</td></tr>`,
-		row.ticket, versionAttr, row.src, ticketCell, row.created, row.updated, cveCell, row.version, langDisplay, row.status, classCell, prioCell, pkgDisplay, row.cvss, reachCell, bpCell)
+	fmt.Printf(`<tr id="%s" data-version="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td></tr>`,
+		row.ticket, versionAttr, row.src, ticketCell, row.created, row.updated, cveCell, row.version, langDisplay, row.status, actionCell, prioCell, pkgDisplay, row.cvss, reachCell)
 	fmt.Println()
 }
 
@@ -751,23 +742,20 @@ function sortTable(n){
   rows.forEach(function(r){tbody.appendChild(r)});
 }
 function filterTable(){
-  var cf=document.getElementById("classFilter").value;
+  var af=document.getElementById("actionFilter").value;
   var pf=document.getElementById("prioFilter").value;
-  var bf=document.getElementById("bpFilter").value;
   var vfEl=document.getElementById("verFilter");
   var vf=vfEl?vfEl.value:"";
   var rows=document.getElementById("scanTable").getElementsByTagName("tr");
   for(var i=1;i<rows.length;i++){
     var r=rows[i];
-    if(!r.cells||r.cells.length<14)continue;
-    var classText=r.cells[8].textContent;
+    if(!r.cells||r.cells.length<13)continue;
+    var actionText=r.cells[8].textContent;
     var prioText=r.cells[9].textContent;
-    var bpText=r.cells[13].textContent;
     var verText=r.getAttribute("data-version")||"";
     var show=true;
-    if(cf&&classText.indexOf(cf)===-1)show=false;
+    if(af&&actionText.indexOf(af)===-1)show=false;
     if(pf&&prioText.indexOf(pf)===-1)show=false;
-    if(bf&&bpText.indexOf(bf)===-1)show=false;
     if(vf&&verText!==vf)show=false;
     r.style.display=show?"":"none";
   }
@@ -844,37 +832,25 @@ func compareVersionStrings(a, b string) int {
 	return 0
 }
 
-func backportVerdict(cveID, version, latestVersion string, cveVersions map[string][]string, classification types.Classification) string {
-	if classification == types.Misassigned {
-		return `<span class="tag" style="background:#9e9e9e">↩️ N/A</span>`
-	}
-	if classification == types.NotGo {
-		return `<span class="tag" style="background:#9e9e9e">🐍 N/A</span>`
-	}
-	if classification == types.NotReachable {
-		return `<span class="tag" style="background:#388e3c">🟢 No</span>`
-	}
+func htmlAction(row combinedRow, latestVersion string, cveVersions map[string][]string) string {
+	action := buildAction(row, latestVersion, cveVersions)
+	color := htmlActionColor(action)
+	return fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, color, action)
+}
 
-	if version == "" {
-		return `<span class="tag" style="background:#d32f2f">🔴 Fix latest</span>`
+func htmlActionColor(action string) string {
+	switch {
+	case strings.Contains(action, "Fix on"), strings.Contains(action, "Fix latest"):
+		return "#d32f2f"
+	case strings.Contains(action, "Blocked"):
+		return "#f57c00"
+	case strings.Contains(action, "No action"):
+		return "#388e3c"
+	case strings.Contains(action, "Manual review"):
+		return "#fbc02d"
+	case strings.Contains(action, "EOL"), strings.Contains(action, "Misassigned"):
+		return "#9e9e9e"
+	default:
+		return "#000"
 	}
-
-	isLatest := version == latestVersion || compareVersionStrings(version, latestVersion) >= 0
-
-	versions := cveVersions[cveID]
-	affectsLatest := false
-	for _, v := range versions {
-		if v == "main" || v == latestVersion || compareVersionStrings(v, latestVersion) >= 0 {
-			affectsLatest = true
-			break
-		}
-	}
-
-	if isLatest {
-		return `<span class="tag" style="background:#d32f2f">🔴 Fix latest</span>`
-	}
-	if affectsLatest {
-		return `<span class="tag" style="background:#f57c00">🟠 Fix + backport</span>`
-	}
-	return `<span class="tag" style="background:#fbc02d;color:#333">🟡 Backport only</span>`
 }

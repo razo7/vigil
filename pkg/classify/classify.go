@@ -26,7 +26,7 @@ func Classify(in Input) (types.Classification, types.Priority, string) {
 	}
 
 	if !in.IsGoVuln {
-		return types.NotGo, types.PriorityManual, ""
+		return types.Unknown, types.PriorityManual, ""
 	}
 
 	if !in.IsReachable && !in.IsPackageLevel {

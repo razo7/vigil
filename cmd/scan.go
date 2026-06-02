@@ -484,8 +484,8 @@ func writeBatchSummary(path string, results []*types.Result) error {
 			summary.BlockedByGo++
 		case types.NotReachable:
 			summary.NotReachable++
-		case types.NotGo:
-			summary.NotGo++
+		case types.Unknown:
+			summary.Unknown++
 		case types.Misassigned:
 			summary.Misassigned++
 		}
@@ -554,7 +554,7 @@ func printDiscoverTable(disc *types.DiscoverResult) {
 		cols[6] = append(cols[6], fmt.Sprintf("%.1f", r.cvss))
 		cols[7] = append(cols[7], r.reach)
 	}
-	headers := []string{"SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY"}
+	headers := []string{"SRC", "TICKET", "CVE", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY"}
 	widths := make([]int, len(headers))
 	for i, h := range headers {
 		widths[i] = colWidth(h, cols[i])
@@ -569,10 +569,10 @@ func printDiscoverTable(disc *types.DiscoverResult) {
 	lineWidth += len(widths) - 1
 
 	if isTTY {
-		fmt.Printf("\033[1m"+fmtStr+colorReset, "SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+		fmt.Printf("\033[1m"+fmtStr+colorReset, "SRC", "TICKET", "CVE", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
-		fmt.Printf(fmtStr, "SRC", "TICKET", "CVE", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+		fmt.Printf(fmtStr, "SRC", "TICKET", "CVE", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
@@ -611,27 +611,29 @@ func printDiscoverTable(disc *types.DiscoverResult) {
 }
 
 type combinedRow struct {
-	src            string
-	ticket         string
-	ticketURL      string
-	cveID          string
-	cveURL         string
-	version        string
-	lang           string
-	langSrc        string
-	status         string
-	rawStatus      string
-	classification types.Classification
-	priority       types.Priority
-	pkg            string
-	pkgSrc         string
-	cvss           float64
-	reachability   string
-	callPaths      []string
-	importChain    string
-	created        string
-	updated        string
-	fixRoute       route.Route
+	src                 string
+	ticket              string
+	ticketURL           string
+	cveID               string
+	cveURL              string
+	version             string
+	lang                string
+	langSrc             string
+	status              string
+	rawStatus           string
+	classification      types.Classification
+	priority            types.Priority
+	pkg                 string
+	pkgSrc              string
+	cvss                float64
+	reachability        string
+	callPaths           []string
+	importChain         string
+	created             string
+	updated             string
+	fixRoute            route.Route
+	fixFunctionMismatch bool
+	misassignReason     string
 }
 
 func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln) []combinedRow {
@@ -669,26 +671,28 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			callPaths = fu.CallPaths
 		}
 		rows = append(rows, combinedRow{
-			src:            src,
-			ticket:         extractTicketID(r.Source.TicketID),
-			ticketURL:      extractTicketURL(r.Source.TicketID),
-			cveID:          cveID,
-			cveURL:         extractCVEURL(r.Vulnerability.CVEID),
-			version:        extractVersion(r.Source.AffectedOperatorVersion),
-			lang:           shortLanguage(r.Vulnerability.Language),
-			langSrc:        langSrc,
-			status:         shortStatus(r.Source.Status, r.Source.Resolution),
-			rawStatus:      r.Source.Status,
-			classification: r.Recommendation.Classification,
-			priority:       r.Recommendation.Priority,
-			pkg:            shortPackage(r.Vulnerability.Package),
-			pkgSrc:         pkgSrc,
-			cvss:           r.Vulnerability.Severity,
-			reachability:   shortReachability(r),
-			callPaths:      callPaths,
-			created:        r.Source.Created,
-			updated:        r.Source.Updated,
-			fixRoute:       route.Decide(r),
+			src:                 src,
+			ticket:              extractTicketID(r.Source.TicketID),
+			ticketURL:           extractTicketURL(r.Source.TicketID),
+			cveID:               cveID,
+			cveURL:              extractCVEURL(r.Vulnerability.CVEID),
+			version:             extractVersion(r.Source.AffectedOperatorVersion),
+			lang:                shortLanguage(r.Vulnerability.Language),
+			langSrc:             langSrc,
+			status:              shortStatus(r.Source.Status, r.Source.Resolution),
+			rawStatus:           r.Source.Status,
+			classification:      r.Recommendation.Classification,
+			priority:            r.Recommendation.Priority,
+			pkg:                 shortPackage(r.Vulnerability.Package),
+			pkgSrc:              pkgSrc,
+			cvss:                r.Vulnerability.Severity,
+			reachability:        shortReachability(r),
+			callPaths:           callPaths,
+			created:             r.Source.Created,
+			updated:             r.Source.Updated,
+			fixRoute:            route.Decide(r),
+			fixFunctionMismatch: strings.Contains(r.Recommendation.MisassignReason, "fix functions not called"),
+			misassignReason:     r.Recommendation.MisassignReason,
 		})
 	}
 	for _, v := range gaps {
@@ -749,13 +753,12 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 
 	type renderedRow struct {
 		src, ticket, ticketURL, created, updated, cveID, cveURL string
-		version, lang, status, class, priority, pkg             string
+		version, lang, status, action, priority, pkg            string
 		cvss                                                    float64
 		reach                                                   string
 		rawStatus                                               string
 		classification                                          types.Classification
-		priorityVal                                              types.Priority
-		backport                                                string
+		priorityVal                                             types.Priority
 	}
 
 	cveVersions := map[string][]string{}
@@ -816,18 +819,17 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			lang:           langDisplay,
 			status:         row.status,
 			rawStatus:      row.rawStatus,
-			class:          string(row.classification),
+			action:         buildAction(row, latestVer, cveVersions),
 			classification: row.classification,
 			priority:       shortPriority(row.priority),
 			priorityVal:    row.priority,
 			pkg:            pkgDisplay,
 			cvss:           row.cvss,
 			reach:          reachDisplay,
-			backport:       termBackportVerdict(row.cveID, row.version, latestVer, cveVersions, row.classification),
 		})
 	}
 
-	headers := []string{"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY", "BACKPORT"}
+	headers := []string{"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY"}
 	cols := make([][]string, len(headers))
 	for _, r := range rendered {
 		cols[0] = append(cols[0], r.src)
@@ -838,19 +840,18 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		cols[5] = append(cols[5], r.version)
 		cols[6] = append(cols[6], r.lang)
 		cols[7] = append(cols[7], r.status)
-		cols[8] = append(cols[8], r.class)
+		cols[8] = append(cols[8], r.action)
 		cols[9] = append(cols[9], r.priority)
 		cols[10] = append(cols[10], r.pkg)
 		cols[11] = append(cols[11], fmt.Sprintf("%.1f", r.cvss))
 		cols[12] = append(cols[12], r.reach)
-		cols[13] = append(cols[13], r.backport)
 	}
 	w := make([]int, len(headers))
 	for i, h := range headers {
 		w[i] = colWidth(h, cols[i])
 	}
 
-	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%-%ds %%s\n",
+	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%-%ds\n",
 		w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11], w[12])
 	lineWidth := 0
 	for _, ww := range w {
@@ -860,11 +861,11 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 
 	if isTTY {
 		fmt.Printf("\033[1m"+fmtStr+colorReset,
-			"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY", "BACKPORT")
+			"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(fmtStr,
-			"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "CLASSIFICATION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY", "BACKPORT")
+			"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
@@ -872,22 +873,22 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		if isTTY {
 			ticketDisplay := termLink(fmt.Sprintf("%-*s", w[1], r.ticket), r.ticketURL)
 			cveDisplay := termLink(fmt.Sprintf("%-*s", w[4], r.cveID), r.cveURL)
-			classColor := colorForClassification(r.classification)
+			actionColor := colorForAction(r.action)
 			prioColor := colorForPriority(r.priorityVal)
 			statusColor := colorForStatus(r.rawStatus)
 			srcColor := colorForSource(r.src)
-			fmt.Printf(fmt.Sprintf("%%s%%-%ds%%s %%s %%-%ds %%-%ds %%s %%-%ds %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%-%ds %%s\n",
+			fmt.Printf(fmt.Sprintf("%%s%%-%ds%%s %%s %%-%ds %%-%ds %%s %%-%ds %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%-%ds\n",
 				w[0], w[2], w[3], w[5], w[6], w[7], w[8], w[9], w[10], w[11], w[12]),
 				srcColor, r.src, colorReset,
 				ticketDisplay, r.created, r.updated, cveDisplay, r.version, r.lang,
 				statusColor, r.status, colorReset,
-				classColor, r.class, colorReset,
+				actionColor, r.action, colorReset,
 				prioColor, r.priority, colorReset,
-				r.pkg, r.cvss, r.reach, r.backport)
+				r.pkg, r.cvss, r.reach)
 		} else {
-			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%-%ds %%s\n",
+			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%-%ds\n",
 				w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11], w[12]),
-				r.src, r.ticket, r.created, r.updated, r.cveID, r.version, r.lang, r.status, r.class, r.priority, r.pkg, r.cvss, r.reach, r.backport)
+				r.src, r.ticket, r.created, r.updated, r.cveID, r.version, r.lang, r.status, r.action, r.priority, r.pkg, r.cvss, r.reach)
 		}
 	}
 
@@ -908,8 +909,8 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	if n := counts[types.NotReachable]; n > 0 {
 		summary = append(summary, fmt.Sprintf("%d not-reachable", n))
 	}
-	if n := counts[types.NotGo]; n > 0 {
-		summary = append(summary, fmt.Sprintf("%d not-go", n))
+	if n := counts[types.Unknown]; n > 0 {
+		summary = append(summary, fmt.Sprintf("%d unknown", n))
 	}
 	if n := counts[types.Misassigned]; n > 0 {
 		summary = append(summary, fmt.Sprintf("%d misassigned", n))
@@ -956,27 +957,66 @@ func statusRank(status string) int {
 	}
 }
 
-func termBackportVerdict(cveID, version, latestVersion string, cveVersions map[string][]string, classification types.Classification) string {
-	if classification == types.Misassigned || classification == types.NotGo {
-		return "N/A"
+func buildAction(row combinedRow, latestVer string, cveVersions map[string][]string) string {
+	switch row.classification {
+	case types.Unknown:
+		return "❓ Manual review"
+	case types.Misassigned:
+		if strings.Contains(row.misassignReason, "EOL") {
+			return "↩️ EOL"
+		}
+		return "↩️ Misassigned"
+	case types.NotReachable:
+		if row.fixFunctionMismatch {
+			return "\U0001F7E2 No action (verified)"
+		}
+		return "\U0001F7E2 No action"
+	case types.BlockedByGo:
+		return "\U0001F7E0⏳ Blocked"
+	case types.FixableNow:
+		return buildFixAction(row.cveID, row.version, latestVer, cveVersions)
+	default:
+		return "❓ Manual review"
 	}
-	if classification == types.NotReachable {
-		return "No"
-	}
-	if version == "" {
-		return "Fix latest"
-	}
-	isLatest := version == latestVersion || compareVersionStrings(version, latestVersion) >= 0
-	if isLatest {
-		return "Fix latest"
-	}
+}
+
+func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string) string {
 	versions := cveVersions[cveID]
+	var affected []string
+	seen := map[string]bool{}
 	for _, v := range versions {
-		if v == "main" || v == latestVersion || compareVersionStrings(v, latestVersion) >= 0 {
-			return "Fix+backport"
+		if v == "main" {
+			continue
+		}
+		if !seen[v] {
+			seen[v] = true
+			affected = append(affected, "v"+strings.TrimPrefix(v, "v"))
 		}
 	}
-	return "Backport only"
+	if len(affected) == 0 {
+		return "\U0001F534\U0001F527 Fix latest"
+	}
+	sort.Slice(affected, func(i, j int) bool {
+		return compareVersionStrings(affected[i], affected[j]) < 0
+	})
+	return "\U0001F534\U0001F527 Fix on " + strings.Join(affected, ", ")
+}
+
+func colorForAction(action string) string {
+	switch {
+	case strings.HasPrefix(action, "\U0001F534"):
+		return colorCrit
+	case strings.HasPrefix(action, "\U0001F7E0"):
+		return colorHigh
+	case strings.HasPrefix(action, "\U0001F7E2"):
+		return colorLow
+	case strings.HasPrefix(action, "↩"):
+		return colorNull
+	case strings.HasPrefix(action, "❓"):
+		return colorMed
+	default:
+		return colorString
+	}
 }
 
 func sortCombinedRows(rows []combinedRow) {
@@ -1268,7 +1308,7 @@ func colorForClassification(c types.Classification) string {
 		return colorHigh
 	case types.NotReachable:
 		return colorLow
-	case types.NotGo:
+	case types.Unknown:
 		return colorMed
 	case types.Misassigned:
 		return colorNull

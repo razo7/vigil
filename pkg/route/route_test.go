@@ -61,10 +61,10 @@ func TestDecideSemanticFix(t *testing.T) {
 	}
 }
 
-func TestDecideManualNotGo(t *testing.T) {
+func TestDecideManualUnknown(t *testing.T) {
 	result := &types.Result{
 		Recommendation: types.RecommendationInfo{
-			Classification: types.NotGo,
+			Classification: types.Unknown,
 		},
 	}
 	got := Decide(result)
