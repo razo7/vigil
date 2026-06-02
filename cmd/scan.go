@@ -12,7 +12,9 @@ import (
 	"github.com/razo7/vigil/pkg/assess"
 	"github.com/razo7/vigil/pkg/discover"
 	"github.com/razo7/vigil/pkg/fix"
+	"github.com/razo7/vigil/pkg/goversion"
 	"github.com/razo7/vigil/pkg/jira"
+	"github.com/razo7/vigil/pkg/lifecycle"
 	"github.com/razo7/vigil/pkg/route"
 	"github.com/razo7/vigil/pkg/report"
 	"github.com/razo7/vigil/pkg/trivy"
@@ -305,7 +307,7 @@ func runCombinedScan() error {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "\nRunning govulncheck discovery...\n")
+	fmt.Fprintf(os.Stderr, "\nRunning govulncheck discovery (main)...\n")
 	discResult, err := discover.Run(ctx, discover.Options{
 		RepoPath:     repoPath,
 		Component:    scanComponent,
@@ -314,6 +316,79 @@ func runCombinedScan() error {
 		ComponentMap: loadComponentMap(),
 		ProjectJQL:   getConfig().Jira.ProjectJQL(),
 	})
+
+	operatorName := assess.DeriveOperatorName(loadComponentMap()[strings.ToLower(scanComponent)])
+	supportedVersions := lifecycle.SupportedOperatorVersions(operatorName)
+	if repoPath != "" && len(supportedVersions) > 0 {
+		seenCVEs := make(map[string]bool)
+		if discResult != nil {
+			for _, v := range discResult.Vulns {
+				for _, cve := range v.CVEIDs {
+					seenCVEs[cve] = true
+				}
+			}
+		}
+		for _, ver := range supportedVersions {
+			branch := goversion.ReleaseBranch(ver)
+			if !goversion.HasBranch(repoPath, branch) {
+				continue
+			}
+			wt, cleanup, wtErr := goversion.CreateWorktree(repoPath, branch)
+			if wtErr != nil {
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "Running govulncheck on %s...\n", branch)
+			goMod, modErr := goversion.ReadGoMod(wt)
+			if modErr != nil {
+				cleanup()
+				continue
+			}
+			branchResult, branchErr := goversion.RunGovulncheckWithVersion(wt, goMod.EffectiveVersion())
+			cleanup()
+			if branchErr != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: govulncheck on %s failed: %v\n", branch, branchErr)
+				continue
+			}
+			newCount := 0
+			for _, entry := range branchResult.Vulns {
+				for _, alias := range entry.Aliases {
+					if seenCVEs[alias] {
+						continue
+					}
+					seenCVEs[alias] = true
+					newCount++
+					if discResult == nil {
+						discResult = &types.DiscoverResult{}
+					}
+					dv := types.DiscoveredVuln{
+						CVEIDs:      []string{alias},
+						Package:     entry.Package,
+						Description: entry.ID,
+						Source:       fmt.Sprintf("GVC(%s)", branch),
+					}
+					if entry.Reachable {
+						dv.Reachability = "REACHABLE"
+						dv.Classification = types.FixableNow
+						dv.Priority = types.PriorityHigh
+					} else if !entry.ModuleOnly {
+						dv.Reachability = "PACKAGE-LEVEL"
+						dv.Classification = types.FixableNow
+						dv.Priority = types.PriorityMedium
+					} else {
+						dv.Reachability = "MODULE-LEVEL"
+						dv.Classification = types.NotReachable
+						dv.Priority = types.PriorityLow
+					}
+					discResult.Vulns = append(discResult.Vulns, dv)
+					discResult.TotalVulns++
+					discResult.NoTicket++
+				}
+			}
+			if newCount > 0 {
+				fmt.Fprintf(os.Stderr, "  %s: %d additional CVEs found\n", branch, newCount)
+			}
+		}
+	}
 
 	var discoveredGaps []types.DiscoveredVuln
 	discCVEs := make(map[string]bool)

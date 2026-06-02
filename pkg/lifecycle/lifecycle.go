@@ -136,6 +136,25 @@ func LookupSupportPhaseAt(ocpVersion string, at time.Time) types.SupportPhase {
 	return types.PhaseUnknown
 }
 
+func SupportedOperatorVersions(operatorName string) []string {
+	mappings, ok := operatorMappings[operatorName]
+	if !ok {
+		return nil
+	}
+	var versions []string
+	for _, m := range mappings {
+		ocpVersion := ""
+		if len(m.OCPVersions) > 0 {
+			ocpVersion = m.OCPVersions[len(m.OCPVersions)-1]
+		}
+		phase := LookupSupportPhase(ocpVersion)
+		if phase != types.PhaseEOL {
+			versions = append(versions, m.OperatorVersion)
+		}
+	}
+	return versions
+}
+
 func AllOCPVersionsForOperator(operatorName, operatorVersion string) []string {
 	mappings, ok := operatorMappings[operatorName]
 	if !ok {
