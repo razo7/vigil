@@ -95,9 +95,11 @@ func (j JiraConfig) BrowseURL(ticketID string) string {
 }
 
 type ComponentConfig struct {
-	JiraName     string `yaml:"jira_name"`
-	OperatorName string `yaml:"operator_name"`
-	Repo         string `yaml:"repo,omitempty"`
+	JiraName     string            `yaml:"jira_name"`
+	OperatorName string            `yaml:"operator_name"`
+	Repo         string            `yaml:"repo,omitempty"`
+	HealthIndex  map[string]string `yaml:"health_index,omitempty"`
+	DownstreamGo map[string]string `yaml:"downstream_go,omitempty"`
 }
 
 func Load(path string) (*Config, error) {

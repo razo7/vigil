@@ -14,11 +14,20 @@ jira:
 # Fetched via skopeo on 2026-06-02 with VPN access to gitlab.cee.redhat.com
 # Per-branch Go versions from downstream Containerfile.<operator>
 
+# Container image health index URLs.
+# Vigil uses these as an additional signal for prioritization.
+# For Red Hat: catalog.redhat.com security tab (grades A-F based on unpatched CVEs).
+# For non-RH: any URL that reports container image security health (e.g., Quay security scan).
+# Format: per-image URL. The health grade supplements govulncheck reachability analysis.
+
 components:
   far:
     jira_name: "Fence Agents Remediation"
     operator_name: "fence-agents-remediation"
     repo: "github.com/medik8s/fence-agents-remediation"
+    health_index:
+      operator: "https://catalog.redhat.com/en/software/containers/workload-availability/fence-agents-remediation-rhel9-operator/674d98122af3e14d603a0a01"
+      bundle: "https://catalog.redhat.com/en/software/containers/workload-availability/fence-agents-remediation-operator-bundle/674d97ed2af3e14d603a09d7"
     downstream_go:
       "0.5": "1.23.4"
       "0.6": "1.25.3"
@@ -28,6 +37,9 @@ components:
     jira_name: "Self Node Remediation"
     operator_name: "self-node-remediation"
     repo: "github.com/medik8s/self-node-remediation"
+    health_index:
+      operator: "https://catalog.redhat.com/en/software/containers/workload-availability/self-node-remediation-rhel9-operator/674d98192af3e14d603a0a0b"
+      bundle: "https://catalog.redhat.com/en/software/containers/workload-availability/self-node-remediation-operator-bundle/674d98002af3e14d603a09ed"
     downstream_go:
       "0.7": "1.20.12"
       "0.9": "1.21.9"
@@ -39,6 +51,9 @@ components:
     jira_name: "Node Healthcheck"
     operator_name: "node-healthcheck-operator"
     repo: "github.com/medik8s/node-healthcheck-operator"
+    health_index:
+      operator: "https://catalog.redhat.com/en/software/containers/workload-availability/node-healthcheck-rhel9-operator/674d98062af3e14d603a09f9"
+      bundle: "https://catalog.redhat.com/en/software/containers/workload-availability/node-healthcheck-operator-bundle/674d97f42af3e14d603a09e5"
     downstream_go:
       "0.9": "1.23.4"
       "0.10": "1.25.3"
@@ -48,6 +63,8 @@ components:
     jira_name: "Node Maintenance Operator"
     operator_name: "node-maintenance-operator"
     repo: "github.com/medik8s/node-maintenance-operator"
+    health_index:
+      operator: "https://catalog.redhat.com/en/software/containers/workload-availability/node-maintenance-rhel9-operator/674d980e2af3e14d603a0a03"
     downstream_go:
       "5.3": "1.20.12"
       "5.4": "1.23.4"
@@ -58,6 +75,8 @@ components:
     jira_name: "Machine Deletion Remediation"
     operator_name: "machine-deletion-remediation"
     repo: "github.com/medik8s/machine-deletion-remediation"
+    health_index:
+      operator: "https://catalog.redhat.com/en/software/containers/workload-availability/machine-deletion-remediation-rhel8-operator/625ae44d75f64f58a5326432"
     downstream_go:
       "0.4": "1.23.9"
       "0.5": "1.24.4"
