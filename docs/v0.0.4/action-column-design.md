@@ -92,6 +92,36 @@ Currently function-level mismatch detection only works for Go stdlib CVEs (via G
 
 Cache downstream Go version results from local VPN-connected runs to `.vigil/downstream-go-cache.json`. CI weekly scan reads cached values instead of requiring `--go-version` override. Cache entries keyed by `{operator}@{version}` with timestamp for staleness detection.
 
+### Multi-branch CVE discovery
+
+Currently `vigil scan --discover` only scans the default branch (main/HEAD). CVEs in older supported release branches are invisible. This should be changed to scan all supported branches (or at minimum the oldest supported one — most likely to have unfixed CVEs).
+
+Approach:
+1. Look up supported versions from lifecycle config for the component
+2. For each supported version, checkout the corresponding release branch/tag
+3. Run govulncheck per branch
+4. Merge results, deduplicating CVEs that appear across branches
+5. Report which branches each CVE affects (ties into ACTION column "Fix on v0.2, v0.4")
+
+Tags should be preferred over branches when available (more precise — corresponds to an actual release).
+
+### Container health index integration
+
+The `health_index` field in component config provides per-image URLs to container security scanners (e.g., Red Hat catalog grades A-F, Quay security scan). Currently stored as reference links only.
+
+Future integration:
+1. Fetch health grade from the catalog URL (API or scrape)
+2. Include grade in scan output alongside govulncheck results
+3. Use grade as a prioritization signal: grade F components get higher priority than grade A
+4. Show grade in HTML report dashboard cards
+
+Config format (already in `rhwa_jira_example.yaml`):
+```yaml
+health_index:
+  operator: "https://catalog.redhat.com/en/software/containers/..."
+  bundle: "https://catalog.redhat.com/en/software/containers/..."
+```
+
 ### Konflux Conforma integration
 
 Use Konflux Conforma test results as an additional input for component health and CVE state. See FAR example: https://konflux-ui.apps.stone-prod-p02.hjvn.p1.openshiftapps.com/ns/rhwa-tenant/applications/far-0-8/pipelineruns/far-0-8-enterprise-contract-5bspc/logs

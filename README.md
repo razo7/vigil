@@ -470,10 +470,13 @@ v0.0.2 — extends the triage pipeline from v0.0.1 with three detection sources,
 See [docs/v0.0.3/plan.md](docs/v0.0.3/plan.md).
 
 **v0.0.4 Preview:**
+- Multi-branch CVE discovery — scan all supported release branches/tags, not just main
+- Container health index integration — fetch grades from catalog.redhat.com or other scanners
+- Consolidated ACTION column — merge classification + backport into version-specific directives
+- Third-party fix-function detection via GitHub API (extend Gerrit CL analysis beyond stdlib)
 - Snyk integration ([RHWA-632](https://redhat.atlassian.net/browse/RHWA-632))
 - Konflux Conforma results as input source for component state
 - Multi-branch reachability comparison (`vigil reachability --component far --version 0.2,0.4`)
 - ExploitIQ reachability oracle for ambiguous CVEs
-- In-process async mode (goroutine-based agentic)
-- Interactive TUI for call path navigation
-- ASCII call trees color-coded by origin (operator/k8s deps/vulnerable pkg)
+
+See [docs/v0.0.4/action-column-design.md](docs/v0.0.4/action-column-design.md) for full design.
