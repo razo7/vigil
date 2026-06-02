@@ -37,6 +37,7 @@ var ocpReleases = []OCPRelease{
 	{Version: "4.19", GA: date(2025, 6, 25), EndFullSupport: date(2026, 5, 3), EndMaintenance: date(2026, 12, 17)},
 	{Version: "4.20", GA: date(2025, 11, 5), EndFullSupport: date(2026, 5, 3), EndMaintenance: date(2027, 4, 21), EUS: true, EndEUS1: date(2027, 10, 21), EndEUS2: date(2028, 10, 21)},
 	{Version: "4.21", GA: date(2026, 3, 25), EndFullSupport: date(2026, 10, 25), EndMaintenance: date(2027, 9, 25)},
+	{Version: "4.22", GA: date(2026, 6, 9), EndFullSupport: date(2027, 1, 9), EndMaintenance: date(2027, 12, 9), EUS: true, EndEUS1: date(2028, 6, 9), EndEUS2: date(2029, 6, 9)},
 }
 
 var operatorMappings = map[string][]OperatorOCPMapping{
@@ -46,6 +47,7 @@ var operatorMappings = map[string][]OperatorOCPMapping{
 		{OperatorVersion: "0.5", OCPVersions: []string{"4.18"}},
 		{OperatorVersion: "0.6", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
 		{OperatorVersion: "0.7", OCPVersions: []string{"4.21"}},
+		{OperatorVersion: "0.8", OCPVersions: []string{"4.22"}},
 	},
 	"self-node-remediation": {
 		{OperatorVersion: "0.5", OCPVersions: []string{"4.12"}},
@@ -54,6 +56,7 @@ var operatorMappings = map[string][]OperatorOCPMapping{
 		{OperatorVersion: "0.10", OCPVersions: []string{"4.14", "4.15", "4.16", "4.17", "4.18", "4.19"}},
 		{OperatorVersion: "0.11", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
 		{OperatorVersion: "0.12", OCPVersions: []string{"4.21"}},
+		{OperatorVersion: "0.13", OCPVersions: []string{"4.22"}},
 	},
 	"node-healthcheck-operator": {
 		{OperatorVersion: "0.4", OCPVersions: []string{"4.12"}},
@@ -62,6 +65,7 @@ var operatorMappings = map[string][]OperatorOCPMapping{
 		{OperatorVersion: "0.9", OCPVersions: []string{"4.18"}},
 		{OperatorVersion: "0.10", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
 		{OperatorVersion: "0.11", OCPVersions: []string{"4.21"}},
+		{OperatorVersion: "0.12", OCPVersions: []string{"4.22"}},
 	},
 	"node-maintenance-operator": {
 		{OperatorVersion: "5.0", OCPVersions: []string{"4.12"}},
@@ -70,6 +74,7 @@ var operatorMappings = map[string][]OperatorOCPMapping{
 		{OperatorVersion: "5.4", OCPVersions: []string{"4.14", "4.15", "4.16", "4.17", "4.18", "4.19"}},
 		{OperatorVersion: "5.5", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
 		{OperatorVersion: "5.6", OCPVersions: []string{"4.21"}},
+		{OperatorVersion: "5.7", OCPVersions: []string{"4.22"}},
 	},
 	"machine-deletion-remediation": {
 		{OperatorVersion: "0.2", OCPVersions: []string{"4.14"}},
@@ -77,6 +82,7 @@ var operatorMappings = map[string][]OperatorOCPMapping{
 		{OperatorVersion: "0.4", OCPVersions: []string{"4.14", "4.15", "4.16", "4.17", "4.18", "4.19"}},
 		{OperatorVersion: "0.5", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
 		{OperatorVersion: "0.6", OCPVersions: []string{"4.21"}},
+		{OperatorVersion: "0.7", OCPVersions: []string{"4.22"}},
 	},
 }
 
