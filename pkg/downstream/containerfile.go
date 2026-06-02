@@ -141,11 +141,27 @@ func FetchGoVersionForOperator(operatorName, imageName, operatorVersion string) 
 	for _, branch := range branches {
 		info, err := FetchGoVersion(operatorName, imageName, branch)
 		if err == nil {
+			persistToCache(operatorName, operatorVersion, info.GoVersion, info.Branch)
 			return info, nil
 		}
 		lastErr = err
 	}
 	return nil, fmt.Errorf("tried branches %v: %w", branches, lastErr)
+}
+
+func persistToCache(operatorName, operatorVersion, goVersion, branch string) {
+	if goVersion == "" || operatorVersion == "" {
+		return
+	}
+	cache, err := LoadCache()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: failed to load cache for update: %v\n", err)
+		return
+	}
+	cache.Set(operatorName, operatorVersion, goVersion, branch)
+	if err := cache.Save(); err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: failed to save cache: %v\n", err)
+	}
 }
 
 func fetchFileFromGitLab(host, token, projectPath, filePath, ref string) (string, error) {

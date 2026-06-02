@@ -108,7 +108,7 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		var err error
 		dsInfo, err = downstream.FetchGoVersionForOperator(operatorName, ticket.ImageName, ticket.OperatorVersion)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "WARNING: downstream Go version not available: %v\n", err)
+			dsInfo, downstreamGo = fallbackToCache(operatorName, ticket.OperatorVersion, currentGo, err)
 		} else if dsInfo.GoVersion != "" {
 			downstreamGo = dsInfo.GoVersion
 		}
@@ -730,6 +730,33 @@ func buildDownstreamLink(operatorName string, dsInfo *downstream.ContainerfileIn
 	}
 	return fmt.Sprintf("%s/dragonfly/%s/-/blob/%s/%s#L%d",
 		host, operatorName, dsInfo.Branch, dsInfo.FilePath, dsInfo.GoVersionLine)
+}
+
+func fallbackToCache(operatorName, operatorVersion, currentGo string, fetchErr error) (*downstream.ContainerfileInfo, string) {
+	cache, err := downstream.LoadCache()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: downstream Go version not available: %v\n", fetchErr)
+		return nil, currentGo
+	}
+
+	entry, found := cache.Get(operatorName, operatorVersion)
+	if !found {
+		fmt.Fprintf(os.Stderr, "WARNING: downstream Go version not available (no cache): %v\n", fetchErr)
+		return nil, currentGo
+	}
+
+	daysAgo := int(time.Since(entry.FetchedAt).Hours() / 24)
+	if cache.IsStale(entry) {
+		fmt.Fprintf(os.Stderr, "WARNING: cached downstream Go version %s is %d days old\n", entry.GoVersion, daysAgo)
+	} else {
+		fmt.Fprintf(os.Stderr, "Using cached downstream Go version %s (fetched %d days ago)\n", entry.GoVersion, daysAgo)
+	}
+
+	dsInfo := &downstream.ContainerfileInfo{
+		GoVersion: entry.GoVersion,
+		Branch:    entry.Branch,
+	}
+	return dsInfo, entry.GoVersion
 }
 
 func formatOperator(name, version, source string) string {
