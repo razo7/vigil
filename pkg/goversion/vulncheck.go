@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -106,7 +107,73 @@ func toolchainEnv(goVersion string) string {
 	if goVersion == "" {
 		return "GOTOOLCHAIN=local"
 	}
+	v := strings.TrimPrefix(goVersion, "go")
+	if isPreToolchainGo(v) {
+		if err := ensureGoToolchain(v); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: could not install Go %s toolchain: %v — using local\n", v, err)
+			return "GOTOOLCHAIN=local"
+		}
+	}
 	return "GOTOOLCHAIN=go" + normalizeToolchainVersion(goVersion)
+}
+
+func isPreToolchainGo(version string) bool {
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return false
+	}
+	major := 0
+	minor := 0
+	fmt.Sscanf(parts[0], "%d", &major)
+	fmt.Sscanf(parts[1], "%d", &minor)
+	return major <= 1 && minor < 21
+}
+
+func ensureGoToolchain(version string) error {
+	normalized := normalizeToolchainVersion(version)
+	gobin := fmt.Sprintf("go%s", normalized)
+
+	if _, err := exec.LookPath(gobin); err == nil {
+		return nil
+	}
+
+	cacheDir := filepath.Join(os.TempDir(), "vigil-toolchains")
+	cachedBin := filepath.Join(cacheDir, gobin)
+	if _, err := os.Stat(cachedBin); err == nil {
+		os.Setenv("PATH", cacheDir+":"+os.Getenv("PATH"))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "Downloading Go %s toolchain for accurate govulncheck analysis...\n", version)
+
+	goos := "linux"
+	goarch := "amd64"
+	tarball := fmt.Sprintf("go%s.%s-%s.tar.gz", normalized, goos, goarch)
+	url := fmt.Sprintf("https://go.dev/dl/%s", tarball)
+
+	tmpFile := filepath.Join(os.TempDir(), tarball)
+	cmd := exec.Command("curl", "-fsSL", "-o", tmpFile, url)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("downloading %s: %s: %w", url, strings.TrimSpace(string(out)), err)
+	}
+	defer os.Remove(tmpFile)
+
+	extractDir := filepath.Join(cacheDir, "go-"+normalized)
+	os.MkdirAll(extractDir, 0755)
+	cmd = exec.Command("tar", "xzf", tmpFile, "-C", extractDir, "--strip-components=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("extracting: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	os.MkdirAll(cacheDir, 0755)
+	goBin := filepath.Join(extractDir, "bin", "go")
+	os.Symlink(goBin, cachedBin)
+
+	os.Setenv("PATH", cacheDir+":"+os.Getenv("PATH"))
+	os.Setenv("GOROOT", extractDir)
+
+	fmt.Fprintf(os.Stderr, "Go %s toolchain ready\n", version)
+	return nil
 }
 
 func RunGovulncheckWithVersion(repoPath, goVersion string) (*VulncheckResult, error) {
