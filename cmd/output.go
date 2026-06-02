@@ -299,6 +299,8 @@ func printHTMLTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *
 		prioCounts[string(shortPriority(r.priority))]++
 	}
 
+	uniqueVersions := collectUniqueVersions(rows)
+
 	fmt.Printf(`<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Vigil Scan Report</title>
 <style>
@@ -321,23 +323,81 @@ a:hover{text-decoration:underline}
 .legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:12px}
 .legend-item{display:flex;align-items:center;gap:4px}
 .legend-dot{width:10px;height:10px;border-radius:50%%}
-.filter-bar{margin:12px 0;display:flex;gap:8px;align-items:center;font-size:13px}
+.filter-bar{margin:12px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
+.filter-bar label{font-weight:600;color:#586069}
 .filter-bar select{padding:4px 8px;border-radius:4px;border:1px solid #d1d5da}
 .mermaid{margin:8px 0 16px;padding:12px;background:#f6f8fa;border-radius:6px}
+details .mermaid{min-width:600px;overflow-x:auto}
+.mermaid-actions{display:inline-flex;gap:8px;align-items:center}
+.fullview-btn{background:none;border:1px solid #d1d5da;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px}
+.fullview-btn:hover{background:#f6f8fa}
+.mermaid-modal{display:none;position:fixed;top:0;left:0;width:100%%;height:100%%;background:rgba(0,0,0,0.8);z-index:1000;padding:40px;overflow:auto}
+.mermaid-modal.active{display:flex;align-items:center;justify-content:center}
+.mermaid-modal .mermaid-modal-content{background:#fff;padding:24px;border-radius:8px;max-width:95%%;overflow-x:auto}
+.mermaid-modal .close{position:absolute;top:16px;right:24px;color:#fff;font-size:32px;cursor:pointer}
+.version-tabs{display:flex;gap:0;margin:16px 0 0;border-bottom:2px solid #e1e4e8}
+.version-tab{padding:8px 16px;cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:600;color:#586069;background:#f6f8fa}
+.version-tab:hover{background:#e1e4e8}
+.version-tab.active{background:#fff;color:#24292e;border-color:#e1e4e8;margin-bottom:-2px;border-bottom:2px solid #fff}
 .action-list{list-style:none;padding:0;margin:0}
 .action-list li{padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
-@media print{th{position:static}tr:nth-child(even){background:#fafbfc !important}}
+@media print{th{position:static}tr:nth-child(even){background:#fafbfc !important}.mermaid-modal{display:none !important}}
 </style></head><body>
-<h1>🔍 Vigil Scan Report</h1>
+<h1>Vigil Scan Report</h1>
 <p>Generated: %s</p>
 `, time.Now().Format("2006-01-02 15:04"))
 
-	// Donut chart + severity bar
 	total := len(rows)
 	fmt.Println(`<div class="cards">`)
 
-	// Classification donut
-	fmt.Println(`<div class="card"><h3>📊 Classification Breakdown</h3>`)
+	printHTMLDonutChart(classCounts, total)
+	printHTMLSeverityBar(prioCounts, total)
+	printHTMLActionItems(rows)
+
+	fmt.Println(`</div>`)
+
+	printHTMLFilterBar(uniqueVersions)
+
+	printHTMLVersionTabs(uniqueVersions)
+
+	fmt.Println(`<table id="scanTable"><thead><tr>
+<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">CVE</th><th onclick="sortTable(5)">VERSION</th><th onclick="sortTable(6)">LANG</th><th onclick="sortTable(7)">STATUS</th><th onclick="sortTable(8)">CLASSIFICATION</th><th onclick="sortTable(9)">PRIORITY</th><th onclick="sortTable(10)">PACKAGE</th><th onclick="sortTable(11)">CVSS</th><th onclick="sortTable(12)">REACHABILITY</th><th onclick="sortTable(13)">BACKPORT</th>
+</tr></thead><tbody>`)
+
+	for _, row := range rows {
+		printHTMLTableRow(row, latestVersion, cveVersions)
+	}
+
+	fmt.Println(`</tbody></table>`)
+
+	fmt.Println(`<div id="mermaidModal" class="mermaid-modal" onclick="closeMermaidModal(event)">`)
+	fmt.Println(`<span class="close" onclick="closeMermaidModal(event)">&times;</span>`)
+	fmt.Println(`<div class="mermaid-modal-content" id="mermaidModalBody"></div>`)
+	fmt.Println(`</div>`)
+
+	printHTMLScripts()
+
+	fmt.Println(`</body></html>`)
+}
+
+func collectUniqueVersions(rows []combinedRow) []string {
+	seen := map[string]bool{}
+	var versions []string
+	for _, r := range rows {
+		v := r.version
+		if v == "" {
+			v = "main"
+		}
+		if !seen[v] {
+			seen[v] = true
+			versions = append(versions, v)
+		}
+	}
+	return versions
+}
+
+func printHTMLDonutChart(classCounts map[types.Classification]int, total int) {
+	fmt.Println(`<div class="card"><h3>Classification Breakdown</h3>`)
 	if total > 0 {
 		type slice struct {
 			label string
@@ -385,9 +445,10 @@ a:hover{text-decoration:underline}
 		fmt.Println(`</div>`)
 	}
 	fmt.Println(`</div>`)
+}
 
-	// Severity bar
-	fmt.Println(`<div class="card"><h3>⚡ Severity Distribution</h3>`)
+func printHTMLSeverityBar(prioCounts map[string]int, total int) {
+	fmt.Println(`<div class="card"><h3>Severity Distribution</h3>`)
 	fmt.Println(`<div class="severity-bar">`)
 	type sevSlice struct {
 		label string
@@ -408,9 +469,10 @@ a:hover{text-decoration:underline}
 		fmt.Printf(`<div style="width:%.0f%%;background:%s">%s %d</div>%s`, pct, s.color, s.label, s.count, "\n")
 	}
 	fmt.Println(`</div></div>`)
+}
 
-	// Top action items
-	fmt.Println(`<div class="card"><h3>⚡ Top Action Items</h3><ol class="action-list">`)
+func printHTMLActionItems(rows []combinedRow) {
+	fmt.Println(`<div class="card"><h3>Top Action Items</h3><ol class="action-list">`)
 	actionCount := 0
 	for _, row := range rows {
 		if row.classification != types.FixableNow || actionCount >= 10 {
@@ -424,116 +486,326 @@ a:hover{text-decoration:underline}
 		fmt.Printf("<li>%s <span class=\"tag\" style=\"background:%s\">%s</span> %s %s</li>\n",
 			ticket, htmlPrioColor(row.priority), shortPriority(row.priority), row.pkg, row.reachability)
 	}
-	fmt.Println(`</ol></div></div>`)
+	fmt.Println(`</ol></div>`)
+}
 
-	// Filter bar
-	fmt.Println(`<div class="filter-bar">Filter: <select id="classFilter" onchange="filterTable()">
+func printHTMLFilterBar(versions []string) {
+	fmt.Println(`<div class="filter-bar">`)
+	fmt.Println(`<label>Classification:</label><select id="classFilter" onchange="filterTable()">
 <option value="">All</option>
 <option value="Fixable Now">Fixable Now</option>
 <option value="Not Reachable">Not Reachable</option>
 <option value="Blocked by Go">Blocked by Go</option>
 <option value="Not Go">Not Go</option>
 <option value="Misassigned">Misassigned</option>
-</select></div>`)
-
-	// Table
-	fmt.Println(`<table id="scanTable"><thead><tr>
-<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">CVE</th><th onclick="sortTable(5)">VERSION</th><th onclick="sortTable(6)">LANG</th><th onclick="sortTable(7)">STATUS</th><th onclick="sortTable(8)">CLASSIFICATION</th><th onclick="sortTable(9)">PRIORITY</th><th onclick="sortTable(10)">PACKAGE</th><th onclick="sortTable(11)">CVSS</th><th onclick="sortTable(12)">REACHABILITY</th><th onclick="sortTable(13)">BACKPORT</th>
-</tr></thead><tbody>`)
-
-	for _, row := range rows {
-		langDisplay := row.lang
-		if row.langSrc != "" {
-			langDisplay = fmt.Sprintf("%s(%s)", row.lang, row.langSrc)
+</select>`)
+	fmt.Println(`<label>Priority:</label><select id="prioFilter" onchange="filterTable()">
+<option value="">All</option>
+<option value="Critical">Critical</option>
+<option value="High">High</option>
+<option value="Medium">Medium</option>
+<option value="Low">Low</option>
+</select>`)
+	fmt.Println(`<label>Backport:</label><select id="bpFilter" onchange="filterTable()">
+<option value="">All</option>
+<option value="Fix latest">Fix latest</option>
+<option value="Fix + backport">Fix + backport</option>
+<option value="Backport only">Backport only</option>
+<option value="No">No</option>
+<option value="N/A">N/A</option>
+</select>`)
+	if len(versions) > 1 {
+		fmt.Println(`<label>Version:</label><select id="verFilter" onchange="filterTable()">`)
+		fmt.Println(`<option value="">All</option>`)
+		for _, v := range versions {
+			fmt.Printf("<option value=\"%s\">%s</option>\n", v, v)
 		}
-		pkgDisplay := row.pkg
-		if row.pkgSrc != "" && row.pkg != "" {
-			pkgDisplay = fmt.Sprintf("%s(%s)", row.pkg, row.pkgSrc)
-		}
-		ticketCell := row.ticket
-		if row.ticketURL != "" {
-			ticketCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.ticketURL, row.ticket)
-		}
-		cveCell := row.cveID
-		if row.cveURL != "" {
-			cveCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.cveURL, row.cveID)
-		}
-		classCell := fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, htmlClassColor(row.classification), row.classification)
-		prioCell := fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, htmlPrioColor(row.priority), shortPriority(row.priority))
+		fmt.Println(`</select>`)
+	}
+	fmt.Println(`</div>`)
+}
 
-		reachDisplay := row.reachability
-		if ep := entryPointFile(row.callPaths); ep != "" {
-			label := row.reachability
-			if isTestPath(ep) && label == "REACHABLE" {
-				label = "TEST-ONLY"
-			}
-			reachDisplay = fmt.Sprintf("%s (%s)", label, ep)
-		} else if row.reachability == "MODULE-LEVEL" {
-			reachDisplay = "MODULE-LEVEL (go.mod only)"
-		} else if row.reachability == "PACKAGE-LEVEL" && row.importChain != "" {
-			reachDisplay = fmt.Sprintf("PACKAGE-LEVEL (%s)", row.importChain)
-		}
+func printHTMLVersionTabs(versions []string) {
+	if len(versions) <= 1 {
+		return
+	}
+	fmt.Println(`<div class="version-tabs">`)
+	fmt.Println(`<span class="version-tab active" onclick="selectVersionTab(this,'')" data-version="">All</span>`)
+	for _, v := range versions {
+		fmt.Printf(`<span class="version-tab" onclick="selectVersionTab(this,'%s')" data-version="%s">%s</span>%s`, v, v, v, "\n")
+	}
+	fmt.Println(`</div>`)
+}
 
-		reachCell := reachDisplay
-		hasChain := (strings.HasPrefix(row.reachability, "REACHABLE") || strings.HasPrefix(row.reachability, "PACKAGE-LEVEL")) &&
-			(len(row.callPaths) > 0 || row.importChain != "")
-		if hasChain {
-			var frames []string
-			for _, cp := range row.callPaths {
-				parts := strings.Split(cp, " → ")
-				frames = append(frames, parts...)
-			}
-			if len(frames) == 0 && row.importChain != "" {
-				frames = strings.Split(row.importChain, " → ")
-			}
-			if len(frames) > 10 {
-				frames = append(frames[:3], append([]string{"..."}, frames[len(frames)-3:]...)...)
-			}
-			if len(frames) > 1 {
-				var mermaid strings.Builder
-				mermaid.WriteString("graph LR\n")
-				for i, frame := range frames {
-					safeFrame := strings.ReplaceAll(frame, `"`, "'")
-					nodeID := fmt.Sprintf("N%d", i)
-					if i < len(frames)-1 {
-						nextID := fmt.Sprintf("N%d", i+1)
-						fmt.Fprintf(&mermaid, "    %s[\"%s\"] --> %s\n", nodeID, safeFrame, nextID)
-					} else {
-						fmt.Fprintf(&mermaid, "    %s[\"%s\"]\n", nodeID, safeFrame)
-						fmt.Fprintf(&mermaid, "    style %s fill:#d32f2f,color:#fff\n", nodeID)
-					}
-				}
-				reachCell = fmt.Sprintf(`%s<details><summary>🔎 call path</summary><div class="mermaid">%s</div></details>`,
-					reachDisplay, mermaid.String())
-			}
-		}
+func printHTMLTableRow(row combinedRow, latestVersion string, cveVersions map[string][]string) {
+	langDisplay := row.lang
+	if row.langSrc != "" {
+		langDisplay = fmt.Sprintf("%s(%s)", row.lang, row.langSrc)
+	}
+	pkgDisplay := row.pkg
+	if row.pkgSrc != "" && row.pkg != "" {
+		pkgDisplay = fmt.Sprintf("%s(%s)", row.pkg, row.pkgSrc)
+	}
+	ticketCell := row.ticket
+	if row.ticketURL != "" {
+		ticketCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.ticketURL, row.ticket)
+	}
+	cveCell := row.cveID
+	if row.cveURL != "" {
+		cveCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.cveURL, row.cveID)
+	}
+	classCell := fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, htmlClassColor(row.classification), row.classification)
+	prioCell := fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, htmlPrioColor(row.priority), shortPriority(row.priority))
 
-		bpCell := backportVerdict(row.cveID, row.version, latestVersion, cveVersions, row.classification)
+	reachDisplay := buildReachDisplay(row)
+	reachCell := buildReachCell(row, reachDisplay)
 
-		fmt.Printf(`<tr id="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td><td>%s</td></tr>`,
-			row.ticket, row.src, ticketCell, row.created, row.updated, cveCell, row.version, langDisplay, row.status, classCell, prioCell, pkgDisplay, row.cvss, reachCell, bpCell)
-		fmt.Println()
+	bpCell := backportVerdict(row.cveID, row.version, latestVersion, cveVersions, row.classification)
+
+	versionAttr := row.version
+	if versionAttr == "" {
+		versionAttr = "main"
 	}
 
-	fmt.Println(`</tbody></table>`)
+	fmt.Printf(`<tr id="%s" data-version="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td><td>%s</td></tr>`,
+		row.ticket, versionAttr, row.src, ticketCell, row.created, row.updated, cveCell, row.version, langDisplay, row.status, classCell, prioCell, pkgDisplay, row.cvss, reachCell, bpCell)
+	fmt.Println()
+}
 
-	// JavaScript for sorting and filtering
+func buildReachDisplay(row combinedRow) string {
+	if ep := entryPointFile(row.callPaths); ep != "" {
+		label := row.reachability
+		if isTestPath(ep) && label == "REACHABLE" {
+			label = "TEST-ONLY"
+		}
+		return fmt.Sprintf("%s (%s)", label, ep)
+	}
+	if row.reachability == "MODULE-LEVEL" {
+		return "MODULE-LEVEL (go.mod only)"
+	}
+	if row.reachability == "PACKAGE-LEVEL" && row.importChain != "" {
+		return fmt.Sprintf("PACKAGE-LEVEL (%s)", row.importChain)
+	}
+	return row.reachability
+}
+
+func buildReachCell(row combinedRow, reachDisplay string) string {
+	if row.reachability == "PACKAGE-LEVEL" && row.importChain != "" && len(row.callPaths) == 0 {
+		return buildImportChainMermaid(row, reachDisplay)
+	}
+
+	hasCallPaths := (strings.HasPrefix(row.reachability, "REACHABLE") || strings.HasPrefix(row.reachability, "PACKAGE-LEVEL")) &&
+		len(row.callPaths) > 0
+	if !hasCallPaths {
+		return reachDisplay
+	}
+
+	return buildCallPathMermaid(row, reachDisplay)
+}
+
+func buildImportChainMermaid(row combinedRow, reachDisplay string) string {
+	frames := strings.Split(row.importChain, " → ")
+	if len(frames) <= 1 {
+		return reachDisplay
+	}
+
+	var mermaid strings.Builder
+	mermaid.WriteString("graph LR\n")
+	for i, frame := range frames {
+		safeFrame := strings.ReplaceAll(frame, `"`, "'")
+		nodeID := fmt.Sprintf("N%d", i)
+		if i < len(frames)-1 {
+			nextID := fmt.Sprintf("N%d", i+1)
+			fmt.Fprintf(&mermaid, "    %s[\"%s\"] --> %s\n", nodeID, safeFrame, nextID)
+		} else {
+			fmt.Fprintf(&mermaid, "    %s[\"%s\"]\n", nodeID, safeFrame)
+			fmt.Fprintf(&mermaid, "    style %s fill:#f57c00,color:#fff\n", nodeID)
+		}
+		mermaid.WriteString(mermaidClickDirective(nodeID, frame, true))
+	}
+
+	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>import chain</summary><div class="mermaid">%s</div></details>`+
+		`<button class="fullview-btn" onclick="openMermaidModal(this)">Full view</button></div>`,
+		reachDisplay, mermaid.String())
+}
+
+func buildCallPathMermaid(row combinedRow, reachDisplay string) string {
+	var frames []string
+	for _, cp := range row.callPaths {
+		parts := strings.Split(cp, " → ")
+		frames = append(frames, parts...)
+	}
+	if len(frames) == 0 {
+		return reachDisplay
+	}
+	if len(frames) > 10 {
+		frames = append(frames[:3], append([]string{"..."}, frames[len(frames)-3:]...)...)
+	}
+	if len(frames) <= 1 {
+		return reachDisplay
+	}
+
+	var mermaid strings.Builder
+	mermaid.WriteString("graph LR\n")
+	for i, frame := range frames {
+		safeFrame := strings.ReplaceAll(frame, `"`, "'")
+		nodeID := fmt.Sprintf("N%d", i)
+		if i < len(frames)-1 {
+			nextID := fmt.Sprintf("N%d", i+1)
+			fmt.Fprintf(&mermaid, "    %s[\"%s\"] --> %s\n", nodeID, safeFrame, nextID)
+		} else {
+			fmt.Fprintf(&mermaid, "    %s[\"%s\"]\n", nodeID, safeFrame)
+			fmt.Fprintf(&mermaid, "    style %s fill:#d32f2f,color:#fff\n", nodeID)
+		}
+		mermaid.WriteString(mermaidClickDirective(nodeID, frame, false))
+	}
+
+	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>call path</summary><div class="mermaid">%s</div></details>`+
+		`<button class="fullview-btn" onclick="openMermaidModal(this)">Full view</button></div>`,
+		reachDisplay, mermaid.String())
+}
+
+var mermaidFileRe = regexp.MustCompile(`\(([^)]+\.go)\)`)
+
+func mermaidClickDirective(nodeID, frame string, isImportChain bool) string {
+	if isImportChain {
+		return mermaidClickForModule(nodeID, frame)
+	}
+	return mermaidClickForCallPath(nodeID, frame)
+}
+
+func mermaidClickForModule(nodeID, mod string) string {
+	mod = strings.TrimSpace(mod)
+	if mod == "" || mod == "..." {
+		return ""
+	}
+	if strings.HasPrefix(mod, "github.com/") || strings.HasPrefix(mod, "sigs.k8s.io/") || strings.HasPrefix(mod, "k8s.io/") {
+		return fmt.Sprintf("    click %s \"https://pkg.go.dev/%s\" _blank\n", nodeID, mod)
+	}
+	if strings.HasPrefix(mod, "golang.org/") || strings.HasPrefix(mod, "google.golang.org/") {
+		return fmt.Sprintf("    click %s \"https://pkg.go.dev/%s\" _blank\n", nodeID, mod)
+	}
+	if !strings.Contains(mod, "/") && !strings.Contains(mod, ".") {
+		return ""
+	}
+	if strings.Contains(mod, ".") && strings.Contains(mod, "/") {
+		return fmt.Sprintf("    click %s \"https://pkg.go.dev/%s\" _blank\n", nodeID, mod)
+	}
+	return ""
+}
+
+func mermaidClickForCallPath(nodeID, frame string) string {
+	match := mermaidFileRe.FindStringSubmatch(frame)
+	if match == nil {
+		return ""
+	}
+	filename := match[1]
+
+	if strings.HasPrefix(filename, "src/") {
+		goPath := strings.TrimPrefix(filename, "src/")
+		return fmt.Sprintf("    click %s \"https://cs.opensource.google/go/go/+/refs/tags/go1.26.3:%s\" _blank\n", nodeID, goPath)
+	}
+
+	if strings.HasPrefix(filename, "pkg/") || strings.HasPrefix(filename, "cmd/") ||
+		strings.HasPrefix(filename, "internal/") || strings.HasPrefix(filename, "test/") ||
+		strings.HasPrefix(filename, "e2e/") {
+		return ""
+	}
+
+	modPath := extractModulePath(filename)
+	if modPath != "" {
+		return fmt.Sprintf("    click %s \"https://pkg.go.dev/%s\" _blank\n", nodeID, modPath)
+	}
+	return ""
+}
+
+func extractModulePath(filename string) string {
+	parts := strings.Split(filename, "/")
+	if len(parts) < 2 {
+		return ""
+	}
+	if !strings.Contains(parts[0], ".") {
+		return ""
+	}
+	for i := len(parts) - 1; i >= 1; i-- {
+		if strings.HasSuffix(parts[i], ".go") {
+			return strings.Join(parts[:i], "/")
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+func printHTMLScripts() {
 	fmt.Println(`<script>
-function sortTable(n){var t=document.getElementById("scanTable"),r=t.rows,s=true,d="asc",c=true;
-while(c){c=false;for(var i=1;i<r.length-1;i++){s=false;
-var x=r[i].cells[n],y=r[i+1].cells[n];
-var xv=x.textContent.toLowerCase(),yv=y.textContent.toLowerCase();
-if(d=="asc"?xv>yv:xv<yv){s=true;break}}
-if(s){r[i].parentNode.insertBefore(r[i+1],r[i]);c=true}else if(d=="asc"){d="desc";c=true}}}
-function filterTable(){var f=document.getElementById("classFilter").value;
-var t=document.getElementById("scanTable").getElementsByTagName("tr");
-for(var i=1;i<t.length;i++){var c=t[i].cells[8];
-if(!c)continue;t[i].style.display=(!f||c.textContent.indexOf(f)>-1)?"":"none"}}
+var sortDirs={};
+function sortTable(n){
+  var t=document.getElementById("scanTable"),tbody=t.tBodies[0],rows=Array.from(tbody.rows);
+  var dir=sortDirs[n]==='asc'?'desc':'asc';
+  sortDirs[n]=dir;
+  rows.sort(function(a,b){
+    var x=a.cells[n].textContent.toLowerCase(),y=b.cells[n].textContent.toLowerCase();
+    if(x<y)return dir==='asc'?-1:1;
+    if(x>y)return dir==='asc'?1:-1;
+    return 0;
+  });
+  rows.forEach(function(r){tbody.appendChild(r)});
+}
+function filterTable(){
+  var cf=document.getElementById("classFilter").value;
+  var pf=document.getElementById("prioFilter").value;
+  var bf=document.getElementById("bpFilter").value;
+  var vfEl=document.getElementById("verFilter");
+  var vf=vfEl?vfEl.value:"";
+  var rows=document.getElementById("scanTable").getElementsByTagName("tr");
+  for(var i=1;i<rows.length;i++){
+    var r=rows[i];
+    if(!r.cells||r.cells.length<14)continue;
+    var classText=r.cells[8].textContent;
+    var prioText=r.cells[9].textContent;
+    var bpText=r.cells[13].textContent;
+    var verText=r.getAttribute("data-version")||"";
+    var show=true;
+    if(cf&&classText.indexOf(cf)===-1)show=false;
+    if(pf&&prioText.indexOf(pf)===-1)show=false;
+    if(bf&&bpText.indexOf(bf)===-1)show=false;
+    if(vf&&verText!==vf)show=false;
+    r.style.display=show?"":"none";
+  }
+}
+function selectVersionTab(el,ver){
+  document.querySelectorAll(".version-tab").forEach(function(t){t.classList.remove("active")});
+  el.classList.add("active");
+  var vfEl=document.getElementById("verFilter");
+  if(vfEl)vfEl.value=ver;
+  filterTable();
+}
+function openMermaidModal(btn){
+  var container=btn.closest(".mermaid-actions");
+  if(!container)return;
+  var src=container.querySelector(".mermaid");
+  if(!src)return;
+  var modal=document.getElementById("mermaidModal");
+  var body=document.getElementById("mermaidModalBody");
+  var clone=src.cloneNode(true);
+  clone.removeAttribute("data-processed");
+  clone.classList.add("mermaid");
+  body.innerHTML="";
+  body.appendChild(clone);
+  modal.classList.add("active");
+  mermaid.run({nodes:[clone]});
+}
+function closeMermaidModal(e){
+  var modal=document.getElementById("mermaidModal");
+  if(e.target===modal||e.target.classList.contains("close")){
+    modal.classList.remove("active");
+    document.getElementById("mermaidModalBody").innerHTML="";
+  }
+}
 </script>`)
 
 	fmt.Println(`<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>`)
 	fmt.Println(`<script>
-mermaid.initialize({startOnLoad:false,theme:'neutral'});
+mermaid.initialize({startOnLoad:false,theme:'neutral',securityLevel:'loose'});
 document.querySelectorAll('details').forEach(function(d){
   d.addEventListener('toggle',function(){
     if(d.open){d.querySelectorAll('.mermaid').forEach(function(el){
@@ -542,8 +814,6 @@ document.querySelectorAll('details').forEach(function(d){
   })
 });
 </script>`)
-
-	fmt.Println(`</body></html>`)
 }
 
 func cosD(deg float64) float64 {
