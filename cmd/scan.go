@@ -331,6 +331,7 @@ func runCombinedScan() error {
 		for _, ver := range supportedVersions {
 			branch := goversion.ReleaseBranch(ver)
 			if !goversion.HasBranch(repoPath, branch) {
+				fmt.Fprintf(os.Stderr, "  Skipping %s (branch not found in repo)\n", branch)
 				continue
 			}
 			wt, cleanup, wtErr := goversion.CreateWorktree(repoPath, branch)
@@ -753,6 +754,7 @@ type combinedRow struct {
 	slaDueDate          string
 	slaStatus           string
 	fixVersion          string
+	currentGo           string
 	fixRoute            route.Route
 	fixFunctionMismatch bool
 	misassignReason     string
@@ -820,6 +822,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			slaDueDate:          r.Source.SLADueDate,
 			slaStatus:           r.Source.SLAStatus,
 			fixVersion:          shortFixVersion(r.Vulnerability.FixVersion),
+			currentGo:           extractCurrentGo(r),
 			fixRoute:            route.Decide(r),
 			fixFunctionMismatch: strings.Contains(r.Recommendation.MisassignReason, "fix functions not called"),
 			misassignReason:     r.Recommendation.MisassignReason,
@@ -1154,13 +1157,13 @@ func buildAction(row combinedRow, latestVer string, cveVersions map[string][]str
 	case types.BlockedByGo:
 		return "\U0001F7E0⏳ Blocked"
 	case types.FixableNow:
-		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion)
+		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion, row.currentGo)
 	default:
 		return "❓ Manual review"
 	}
 }
 
-func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string, cvss float64, fixVersion string) string {
+func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string, cvss float64, fixVersion, currentGo string) string {
 	isQualified := cvss >= 7.0
 
 	operatorName := ""
@@ -1204,7 +1207,11 @@ func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]s
 
 	fixHint := ""
 	if fixVersion != "" {
-		fixHint = " (→ " + fixVersion + ")"
+		if currentGo != "" {
+			fixHint = " (" + currentGo + " → " + fixVersion + ")"
+		} else {
+			fixHint = " (→ " + fixVersion + ")"
+		}
 	}
 
 	if len(qualified) == 0 {
@@ -1508,12 +1515,35 @@ func isTestPath(path string) bool {
 		strings.Contains(path, "/e2e/")
 }
 
+func extractCurrentGo(r *types.Result) string {
+	if ba := r.Analysis.ReleaseBranch; ba != nil {
+		if ba.Downstream != nil && ba.Downstream.GoVersion != "" {
+			return bareVersion(ba.Downstream.GoVersion)
+		}
+		return bareVersion(ba.Upstream.GoVersion)
+	}
+	if fu := r.Analysis.FixUpstream; fu != nil {
+		return bareVersion(fu.GoVersion)
+	}
+	return ""
+}
+
+func bareVersion(s string) string {
+	if i := strings.Index(s, " ("); i > 0 {
+		s = s[:i]
+	}
+	return strings.TrimPrefix(s, "go")
+}
+
 func shortFixVersion(fv string) string {
 	if fv == "" {
 		return ""
 	}
 	if i := strings.Index(fv, " ("); i > 0 {
 		fv = fv[:i]
+	}
+	if strings.HasPrefix(fv, "http") {
+		return ""
 	}
 	return fv
 }
