@@ -122,6 +122,18 @@ health_index:
   bundle: "https://catalog.redhat.com/en/software/containers/..."
 ```
 
+### Persistent report hosting
+
+Currently reports are GitHub Actions artifacts (downloaded as zip, expire in 90 days). Need a browsable URL that team members can bookmark.
+
+Options considered:
+- **GitHub Pages (public)**: simplest but CVE data (ticket IDs, reachability, severity) would be public. Not suitable for security-sensitive data.
+- **Private GitHub repo + Pages**: separate repo with restricted access, workflow pushes reports there. Team-only visibility. Recommended for internal use.
+- **GitLab Pages (gitlab.cee.redhat.com)**: behind VPN, most secure. Requires GitLab CI pipeline to receive reports.
+- **S3/GCS with IAM**: scalable but extra infra.
+
+**Recommended**: Private GitHub repo with Pages. The weekly scan workflow pushes `consolidated-report.html` to a `gh-pages` branch on a private repo. Team accesses via `https://<org>.github.io/<private-repo>/`. Historical reports preserved as dated files.
+
 ### Konflux Conforma integration
 
 Use Konflux Conforma test results as an additional input for component health and CVE state. See FAR example: https://konflux-ui.apps.stone-prod-p02.hjvn.p1.openshiftapps.com/ns/rhwa-tenant/applications/far-0-8/pipelineruns/far-0-8-enterprise-contract-5bspc/logs
