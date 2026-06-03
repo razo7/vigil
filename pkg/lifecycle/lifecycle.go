@@ -41,6 +41,9 @@ var ocpReleases = []OCPRelease{
 }
 
 var operatorMappings = map[string][]OperatorOCPMapping{
+	// Source: https://access.redhat.com/support/policy/updates/openshift_operators
+	// Platform Aligned versions use the last OCP version in the list.
+	// Rolling Stream versions cover multiple OCP versions.
 	"fence-agents-remediation": {
 		{OperatorVersion: "0.2", OCPVersions: []string{"4.14"}},
 		{OperatorVersion: "0.4", OCPVersions: []string{"4.16"}},
@@ -285,15 +288,17 @@ func FormatSupportInfo(operatorName, operatorVersion string) string {
 
 // RHWA release version → OCP version mapping
 // e.g., rhwa-24.2 ships with OCP 4.16, rhwa-25.1 ships with OCP 4.18
+// RHWA release → OCP version mapping (latest OCP in range).
+// Skips Konflux migration releases (rhwa-25.2 through 25.7).
+// For multi-OCP entries, maps to the latest for lifecycle lookup.
 var rhwaToOCP = map[string]string{
-	"rhwa-23.3": "4.14",
-	"rhwa-24.1": "4.15",
-	"rhwa-24.2": "4.16",
-	"rhwa-24.3": "4.17",
-	"rhwa-25.1": "4.18",
-	"rhwa-25.2": "4.19",
-	"rhwa-25.3": "4.20",
-	"rhwa-26.1": "4.21",
+	"rhwa-25.1":   "4.18",
+	"rhwa-25.8":   "4.20",
+	"rhwa-25.9":   "4.20",
+	"rhwa-26.1":   "4.20",
+	"rhwa-26.2":   "4.21",
+	"rhwa-4.21-0": "4.21",
+	"rhwa-4.22-0": "4.22",
 }
 
 var ocpVersionRe = regexp.MustCompile(`^(?:OpenShift|OCP)\s+(4\.\d+)$`)
