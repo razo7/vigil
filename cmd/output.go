@@ -365,7 +365,7 @@ details .mermaid{width:max-content;min-width:100%%;padding:20px}
 	printHTMLVersionTabs(uniqueVersions)
 
 	fmt.Println(`<table id="scanTable"><thead><tr>
-<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">CVE</th><th onclick="sortTable(5)">VERSION</th><th onclick="sortTable(6)">LANG</th><th onclick="sortTable(7)">STATUS</th><th onclick="sortTable(8)">ACTION</th><th onclick="sortTable(9)">PRIORITY</th><th onclick="sortTable(10)">PACKAGE</th><th onclick="sortTable(11)">CVSS</th><th onclick="sortTable(12)">REACHABILITY</th>
+<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">DUE</th><th onclick="sortTable(5)">CVE</th><th onclick="sortTable(6)">VERSION</th><th onclick="sortTable(7)">ACTION</th><th onclick="sortTable(8)">PRIORITY</th><th onclick="sortTable(9)">PACKAGE</th><th onclick="sortTable(10)">CVSS</th><th onclick="sortTable(11)">REACHABILITY</th><th onclick="sortTable(12)">LANG</th>
 </tr></thead><tbody>`)
 
 	for _, row := range rows {
@@ -483,12 +483,17 @@ func printHTMLActionItems(rows []combinedRow) {
 			continue
 		}
 		actionCount++
-		ticket := row.ticket
+		label := row.ticket
+		if label == "-- none --" {
+			label = row.cveID
+		}
 		if row.ticketURL != "" {
-			ticket = fmt.Sprintf(`<a href="%s">%s</a>`, row.ticketURL, row.ticket)
+			label = fmt.Sprintf(`<a href="%s">%s</a>`, row.ticketURL, label)
+		} else if row.cveURL != "" {
+			label = fmt.Sprintf(`<a href="%s">%s</a>`, row.cveURL, label)
 		}
 		fmt.Printf("<li>%s <span class=\"tag\" style=\"background:%s\">%s</span> %s %s</li>\n",
-			ticket, htmlPrioColor(row.priority), shortPriority(row.priority), row.pkg, row.reachability)
+			label, htmlPrioColor(row.priority), shortPriority(row.priority), row.pkg, row.reachability)
 	}
 	fmt.Println(`</ol></div>`)
 }
@@ -543,10 +548,16 @@ func printHTMLTableRow(row combinedRow, latestVersion string, cveVersions map[st
 	if row.pkgSrc != "" && row.pkg != "" {
 		pkgDisplay = fmt.Sprintf("%s(%s)", row.pkg, row.pkgSrc)
 	}
-	ticketCell := row.ticket
-	if row.ticketURL != "" {
-		ticketCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.ticketURL, row.ticket)
+
+	ticketDisplay := row.ticket
+	if row.status != "" && row.status != "No ticket" {
+		ticketDisplay = fmt.Sprintf("%s (%s)", row.ticket, row.status)
 	}
+	ticketCell := ticketDisplay
+	if row.ticketURL != "" {
+		ticketCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.ticketURL, ticketDisplay)
+	}
+
 	cveCell := row.cveID
 	if row.cveURL != "" {
 		cveCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.cveURL, row.cveID)
@@ -557,13 +568,20 @@ func printHTMLTableRow(row combinedRow, latestVersion string, cveVersions map[st
 	reachDisplay := buildReachDisplay(row)
 	reachCell := buildReachCell(row, reachDisplay)
 
+	dueCell := row.slaDueDate
+	if row.slaStatus != "" {
+		dueColor := htmlSLAColor(row.slaStatus)
+		dueCell = fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, dueColor, row.slaDueDate)
+	}
+
 	versionAttr := row.version
 	if versionAttr == "" {
 		versionAttr = "main"
 	}
 
-	fmt.Printf(`<tr id="%s" data-version="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td></tr>`,
-		row.ticket, versionAttr, row.src, ticketCell, row.created, row.updated, cveCell, row.version, langDisplay, row.status, actionCell, prioCell, pkgDisplay, row.cvss, reachCell)
+	// Column order: SRC TICKET CREATED UPDATED DUE CVE VERSION ACTION PRIORITY PACKAGE CVSS REACHABILITY LANG
+	fmt.Printf(`<tr id="%s" data-version="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td style="white-space:normal;word-break:break-word;max-width:220px">%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td><td>%s</td></tr>`,
+		row.ticket, versionAttr, row.src, ticketCell, row.created, row.updated, dueCell, cveCell, row.version, actionCell, prioCell, pkgDisplay, row.cvss, reachCell, langDisplay)
 	fmt.Println()
 }
 
@@ -660,7 +678,7 @@ func buildCallPathMermaid(row combinedRow, reachDisplay string) string {
 		reachDisplay, strings.ReplaceAll(mermaid.String(), `"`, `&quot;`), mermaid.String())
 }
 
-var mermaidFileRe = regexp.MustCompile(`\(([^)]+\.go)\)`)
+var mermaidFileRe = regexp.MustCompile(`\(([^)]+\.go(?::\d+)?)\)`)
 
 func mermaidClickDirective(nodeID, frame string, isImportChain bool) string {
 	if isImportChain {
@@ -694,44 +712,60 @@ func mermaidClickForCallPath(nodeID, frame string) string {
 	if match == nil {
 		return ""
 	}
-	filename := match[1]
+	fileLoc := match[1]
+	filePath, lineNum := splitFileLine(fileLoc)
 
-	if strings.HasPrefix(filename, "src/") {
-		goPath := strings.TrimPrefix(filename, "src/")
-		return fmt.Sprintf("    click %s \"https://cs.opensource.google/go/go/+/refs/tags/go1.26.3:%s\" _blank\n", nodeID, goPath)
+	if strings.HasPrefix(filePath, "src/") {
+		goPath := strings.TrimPrefix(filePath, "src/")
+		link := fmt.Sprintf("https://cs.opensource.google/go/go/+/refs/tags/go1.26.3:%s", goPath)
+		if lineNum != "" {
+			link += ";l=" + lineNum
+		}
+		return fmt.Sprintf("    click %s \"%s\" _blank\n", nodeID, link)
 	}
 
-	if strings.HasPrefix(filename, "pkg/") || strings.HasPrefix(filename, "cmd/") ||
-		strings.HasPrefix(filename, "internal/") || strings.HasPrefix(filename, "test/") ||
-		strings.HasPrefix(filename, "e2e/") {
-		key := strings.ToLower(scanComponent)
-		if cfg, ok := getConfig().Components[key]; ok && cfg.Repo != "" {
-			return fmt.Sprintf("    click %s \"https://%s/blob/main/%s\" _blank\n", nodeID, cfg.Repo, filename)
-		}
+	key := strings.ToLower(scanComponent)
+	cfg, hasRepo := getConfig().Components[key]
+	repoURL := ""
+	if hasRepo && cfg.Repo != "" {
+		repoURL = "https://" + cfg.Repo
+	}
+	if repoURL == "" {
 		return ""
 	}
 
-	modPath := extractModulePath(filename)
-	if modPath != "" {
-		return fmt.Sprintf("    click %s \"https://pkg.go.dev/%s\" _blank\n", nodeID, modPath)
+	lineAnchor := ""
+	if lineNum != "" {
+		lineAnchor = "#L" + lineNum
 	}
+
+	if strings.HasPrefix(filePath, "vendor/") ||
+		strings.HasPrefix(filePath, "pkg/") || strings.HasPrefix(filePath, "cmd/") ||
+		strings.HasPrefix(filePath, "internal/") || strings.HasPrefix(filePath, "test/") ||
+		strings.HasPrefix(filePath, "e2e/") || strings.HasPrefix(filePath, "api/") {
+		return fmt.Sprintf("    click %s \"%s/blob/main/%s%s\" _blank\n", nodeID, repoURL, filePath, lineAnchor)
+	}
+
+	if isVendoredPath(filePath) {
+		return fmt.Sprintf("    click %s \"%s/blob/main/vendor/%s%s\" _blank\n", nodeID, repoURL, filePath, lineAnchor)
+	}
+
 	return ""
 }
 
-func extractModulePath(filename string) string {
-	parts := strings.Split(filename, "/")
+func splitFileLine(s string) (string, string) {
+	if i := strings.LastIndex(s, ":"); i > 0 && i < len(s)-1 {
+		return s[:i], s[i+1:]
+	}
+	return s, ""
+}
+
+func isVendoredPath(filename string) bool {
+	parts := strings.SplitN(filename, "/", 2)
 	if len(parts) < 2 {
-		return ""
+		return false
 	}
-	if !strings.Contains(parts[0], ".") {
-		return ""
-	}
-	for i := len(parts) - 1; i >= 1; i-- {
-		if strings.HasSuffix(parts[i], ".go") {
-			return strings.Join(parts[:i], "/")
-		}
-	}
-	return strings.Join(parts, "/")
+	return strings.Contains(parts[0], ".")
 }
 
 func printHTMLScripts() {
@@ -844,6 +878,19 @@ func htmlAction(row combinedRow, latestVersion string, cveVersions map[string][]
 	action := buildAction(row, latestVersion, cveVersions)
 	color := htmlActionColor(action)
 	return fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, color, action)
+}
+
+func htmlSLAColor(status string) string {
+	switch status {
+	case "Overdue":
+		return "#d32f2f"
+	case "Approaching":
+		return "#f57c00"
+	case "On Track":
+		return "#388e3c"
+	default:
+		return "#9e9e9e"
+	}
 }
 
 func htmlActionColor(action string) string {

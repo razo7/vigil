@@ -563,6 +563,15 @@ func buildJiraCVESet(results []*types.Result) map[string]bool {
 	return m
 }
 
+func cveOrgURL(cveIDs []string) string {
+	for _, id := range cveIDs {
+		if strings.HasPrefix(id, "CVE-") {
+			return fmt.Sprintf("https://www.cve.org/CVERecord?id=%s", id)
+		}
+	}
+	return ""
+}
+
 func extractCVEIDOnly(s string) string {
 	if i := strings.Index(s, " "); i > 0 {
 		return s[:i]
@@ -741,6 +750,9 @@ type combinedRow struct {
 	importChain         string
 	created             string
 	updated             string
+	slaDueDate          string
+	slaStatus           string
+	fixVersion          string
 	fixRoute            route.Route
 	fixFunctionMismatch bool
 	misassignReason     string
@@ -780,13 +792,17 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 		} else if fu := r.Analysis.FixUpstream; fu != nil {
 			callPaths = fu.CallPaths
 		}
+		ver := extractVersion(r.Source.AffectedOperatorVersion)
+		if ver == "" {
+			ver = "main"
+		}
 		rows = append(rows, combinedRow{
 			src:                 src,
 			ticket:              extractTicketID(r.Source.TicketID),
 			ticketURL:           extractTicketURL(r.Source.TicketID),
 			cveID:               cveID,
 			cveURL:              extractCVEURL(r.Vulnerability.CVEID),
-			version:             extractVersion(r.Source.AffectedOperatorVersion),
+			version:             ver,
 			lang:                shortLanguage(r.Vulnerability.Language),
 			langSrc:             langSrc,
 			status:              shortStatus(r.Source.Status, r.Source.Resolution),
@@ -801,6 +817,9 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			importChain:         buildImportChainForResult(r, callPaths),
 			created:             r.Source.Created,
 			updated:             r.Source.Updated,
+			slaDueDate:          r.Source.SLADueDate,
+			slaStatus:           r.Source.SLAStatus,
+			fixVersion:          shortFixVersion(r.Vulnerability.FixVersion),
 			fixRoute:            route.Decide(r),
 			fixFunctionMismatch: strings.Contains(r.Recommendation.MisassignReason, "fix functions not called"),
 			misassignReason:     r.Recommendation.MisassignReason,
@@ -814,11 +833,16 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 				break
 			}
 		}
+		gapVersion := strings.TrimPrefix(v.Version, "v")
+		if gapVersion == "" {
+			gapVersion = "main"
+		}
 		rows = append(rows, combinedRow{
 			src:            compositeSource("G", false, gapInTrivy),
 			ticket:         "-- none --",
 			cveID:          formatCVEAliases(v.CVEIDs, 0),
-			version:        v.Version,
+			cveURL:         cveOrgURL(v.CVEIDs),
+			version:        gapVersion,
 			lang:           "Go",
 			langSrc:        "gvc",
 			status:         "No ticket",
@@ -839,7 +863,8 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			src:            "Trivy",
 			ticket:         "-- none --",
 			cveID:          formatCVEAliases(v.CVEIDs, 0),
-			version:        "",
+			cveURL:         cveOrgURL(v.CVEIDs),
+			version:        "main",
 			lang:           "Go",
 			langSrc:        "trivy",
 			status:         "No ticket",
@@ -863,13 +888,14 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
 
 	type renderedRow struct {
-		src, ticket, ticketURL, created, updated, cveID, cveURL string
-		version, lang, status, action, priority, pkg            string
-		cvss                                                    float64
-		reach                                                   string
-		rawStatus                                               string
-		classification                                          types.Classification
-		priorityVal                                             types.Priority
+		src, ticket, ticketURL, created, updated, slaDue, cveID, cveURL string
+		version, lang, action, priority, pkg                            string
+		cvss                                                            float64
+		reach                                                           string
+		rawStatus                                                       string
+		slaStatus                                                       string
+		classification                                                  types.Classification
+		priorityVal                                                     types.Priority
 	}
 
 	cveVersions := map[string][]string{}
@@ -918,17 +944,23 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			}
 		}
 
+		ticketWithStatus := row.ticket
+		if row.status != "" && row.status != "No ticket" {
+			ticketWithStatus = fmt.Sprintf("%s (%s)", row.ticket, row.status)
+		}
+
 		rendered = append(rendered, renderedRow{
 			src:            row.src,
-			ticket:         row.ticket,
+			ticket:         ticketWithStatus,
 			ticketURL:      row.ticketURL,
 			created:        row.created,
 			updated:        row.updated,
+			slaDue:         row.slaDueDate,
+			slaStatus:      row.slaStatus,
 			cveID:          row.cveID,
 			cveURL:         row.cveURL,
 			version:        row.version,
 			lang:           langDisplay,
-			status:         row.status,
 			rawStatus:      row.rawStatus,
 			action:         buildAction(row, latestVer, cveVersions),
 			classification: row.classification,
@@ -940,29 +972,30 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		})
 	}
 
-	headers := []string{"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY"}
+	// Column order: SRC TICKET CREATED UPDATED DUE CVE VERSION ACTION PRIORITY PACKAGE CVSS REACHABILITY LANG
+	headers := []string{"SRC", "TICKET", "CREATED", "UPDATED", "DUE", "CVE", "VERSION", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY", "LANG"}
 	cols := make([][]string, len(headers))
 	for _, r := range rendered {
 		cols[0] = append(cols[0], r.src)
 		cols[1] = append(cols[1], r.ticket)
 		cols[2] = append(cols[2], r.created)
 		cols[3] = append(cols[3], r.updated)
-		cols[4] = append(cols[4], r.cveID)
-		cols[5] = append(cols[5], r.version)
-		cols[6] = append(cols[6], r.lang)
-		cols[7] = append(cols[7], r.status)
-		cols[8] = append(cols[8], r.action)
-		cols[9] = append(cols[9], r.priority)
-		cols[10] = append(cols[10], r.pkg)
-		cols[11] = append(cols[11], fmt.Sprintf("%.1f", r.cvss))
-		cols[12] = append(cols[12], r.reach)
+		cols[4] = append(cols[4], r.slaDue)
+		cols[5] = append(cols[5], r.cveID)
+		cols[6] = append(cols[6], r.version)
+		cols[7] = append(cols[7], r.action)
+		cols[8] = append(cols[8], r.priority)
+		cols[9] = append(cols[9], r.pkg)
+		cols[10] = append(cols[10], fmt.Sprintf("%.1f", r.cvss))
+		cols[11] = append(cols[11], r.reach)
+		cols[12] = append(cols[12], r.lang)
 	}
 	w := make([]int, len(headers))
 	for i, h := range headers {
 		w[i] = colWidth(h, cols[i])
 	}
 
-	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%-%ds\n",
+	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%-%ds %%-%ds\n",
 		w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11], w[12])
 	lineWidth := 0
 	for _, ww := range w {
@@ -972,34 +1005,35 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 
 	if isTTY {
 		fmt.Printf("\033[1m"+fmtStr+colorReset,
-			"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+			"SRC", "TICKET", "CREATED", "UPDATED", "DUE", "CVE", "VERSION", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY", "LANG")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(fmtStr,
-			"SRC", "TICKET", "CREATED", "UPDATED", "CVE", "VERSION", "LANG", "STATUS", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
+			"SRC", "TICKET", "CREATED", "UPDATED", "DUE", "CVE", "VERSION", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY", "LANG")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
 	for _, r := range rendered {
 		if isTTY {
 			ticketDisplay := termLink(fmt.Sprintf("%-*s", w[1], r.ticket), r.ticketURL)
-			cveDisplay := termLink(fmt.Sprintf("%-*s", w[4], r.cveID), r.cveURL)
+			cveDisplay := termLink(fmt.Sprintf("%-*s", w[5], r.cveID), r.cveURL)
+			dueColor := colorForDate(r.slaDue)
 			actionColor := colorForAction(r.action)
 			prioColor := colorForPriority(r.priorityVal)
-			statusColor := colorForStatus(r.rawStatus)
 			srcColor := colorForSource(r.src)
-			fmt.Printf(fmt.Sprintf("%%s%%-%ds%%s %%s %%-%ds %%-%ds %%s %%-%ds %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%-%ds\n",
-				w[0], w[2], w[3], w[5], w[6], w[7], w[8], w[9], w[10], w[11], w[12]),
+			fmt.Printf(fmt.Sprintf("%%s%%-%ds%%s %%s %%-%ds %%-%ds %%s%%-%ds%%s %%s %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%-%ds %%-%ds\n",
+				w[0], w[2], w[3], w[4], w[6], w[7], w[8], w[9], w[10], w[11], w[12]),
 				srcColor, r.src, colorReset,
-				ticketDisplay, r.created, r.updated, cveDisplay, r.version, r.lang,
-				statusColor, r.status, colorReset,
+				ticketDisplay, r.created, r.updated,
+				dueColor, r.slaDue, colorReset,
+				cveDisplay, r.version,
 				actionColor, r.action, colorReset,
 				prioColor, r.priority, colorReset,
-				r.pkg, r.cvss, r.reach)
+				r.pkg, r.cvss, r.reach, r.lang)
 		} else {
-			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%-%ds\n",
+			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%-%ds %%-%ds\n",
 				w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11], w[12]),
-				r.src, r.ticket, r.created, r.updated, r.cveID, r.version, r.lang, r.status, r.action, r.priority, r.pkg, r.cvss, r.reach)
+				r.src, r.ticket, r.created, r.updated, r.slaDue, r.cveID, r.version, r.action, r.priority, r.pkg, r.cvss, r.reach, r.lang)
 		}
 	}
 
@@ -1120,13 +1154,13 @@ func buildAction(row combinedRow, latestVer string, cveVersions map[string][]str
 	case types.BlockedByGo:
 		return "\U0001F7E0⏳ Blocked"
 	case types.FixableNow:
-		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss)
+		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion)
 	default:
 		return "❓ Manual review"
 	}
 }
 
-func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string, cvss float64) string {
+func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string, cvss float64, fixVersion string) string {
 	isQualified := cvss >= 7.0
 
 	operatorName := ""
@@ -1148,7 +1182,7 @@ func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]s
 		}
 		seen[v] = true
 
-		ver := "v" + strings.TrimPrefix(v, "v")
+		ver := strings.TrimPrefix(v, "v")
 
 		if operatorName != "" {
 			phase := lifecycle.LookupSupportPhase(lifecycle.LookupOCPVersion(operatorName, v))
@@ -1167,13 +1201,19 @@ func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]s
 	if len(qualified) == 0 && len(skipped) > 0 {
 		return "\U0001F7E2 Skip (Moderate — doesn't qualify for Maintenance/EUS)"
 	}
+
+	fixHint := ""
+	if fixVersion != "" {
+		fixHint = " (→ " + fixVersion + ")"
+	}
+
 	if len(qualified) == 0 {
-		return "\U0001F534\U0001F527 Fix latest"
+		return "\U0001F534\U0001F527 Fix latest" + fixHint
 	}
 	sort.Slice(qualified, func(i, j int) bool {
 		return compareVersionStrings(qualified[i], qualified[j]) < 0
 	})
-	action := "\U0001F534\U0001F527 Fix on " + strings.Join(qualified, ", ")
+	action := "\U0001F534\U0001F527 Fix on " + strings.Join(qualified, ", ") + fixHint
 	if len(skipped) > 0 {
 		action += " (skip " + strings.Join(skipped, ", ") + " — Moderate)"
 	}
@@ -1380,7 +1420,7 @@ func extractVersion(s string) string {
 		if j := strings.Index(v, " ["); j >= 0 {
 			v = v[:j]
 		}
-		return v
+		return strings.TrimPrefix(v, "v")
 	}
 	return ""
 }
@@ -1466,6 +1506,16 @@ func isTestPath(path string) bool {
 		strings.Contains(path, "/test/") ||
 		strings.Contains(path, "/tests/") ||
 		strings.Contains(path, "/e2e/")
+}
+
+func shortFixVersion(fv string) string {
+	if fv == "" {
+		return ""
+	}
+	if i := strings.Index(fv, " ("); i > 0 {
+		fv = fv[:i]
+	}
+	return fv
 }
 
 func shortPackage(pkg string) string {
