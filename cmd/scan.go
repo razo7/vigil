@@ -773,6 +773,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			cvss:                r.Vulnerability.Severity,
 			reachability:        shortReachability(r),
 			callPaths:           callPaths,
+			importChain:         buildImportChainForResult(r, callPaths),
 			created:             r.Source.Created,
 			updated:             r.Source.Updated,
 			fixRoute:            route.Decide(r),
@@ -1047,6 +1048,34 @@ func statusRank(status string) int {
 	default:
 		return 8
 	}
+}
+
+func buildImportChainForResult(r *types.Result, callPaths []string) string {
+	if len(callPaths) > 0 {
+		return ""
+	}
+	reach := ""
+	if ba := r.Analysis.ReleaseBranch; ba != nil {
+		reach = ba.Reachability
+	}
+	if reach != "PACKAGE-LEVEL" && reach != "PACKAGE_LEVEL" {
+		return ""
+	}
+	pkg := r.Vulnerability.Package
+	if pkg == "" {
+		return ""
+	}
+	operatorName := ""
+	if av := r.Source.AffectedOperatorVersion; av != "" {
+		parts := strings.SplitN(av, " ", 2)
+		if len(parts) > 0 {
+			operatorName = parts[0]
+		}
+	}
+	if operatorName == "" {
+		operatorName = "operator"
+	}
+	return operatorName + " → " + pkg
 }
 
 func buildAction(row combinedRow, latestVer string, cveVersions map[string][]string) string {

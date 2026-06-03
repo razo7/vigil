@@ -326,9 +326,10 @@ a:hover{text-decoration:underline}
 .filter-bar{margin:12px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
 .filter-bar label{font-weight:600;color:#586069}
 .filter-bar select{padding:4px 8px;border-radius:4px;border:1px solid #d1d5da}
-.mermaid{margin:8px 0 16px;padding:16px;background:#f6f8fa;border-radius:6px;font-size:14px}
-.mermaid svg{min-width:800px;min-height:200px}
-details .mermaid{min-width:900px;overflow-x:auto;padding:20px}
+.mermaid{margin:8px 0 16px;padding:16px;background:#f6f8fa;border-radius:6px;font-size:14px;overflow-x:auto}
+.mermaid svg{min-height:150px}
+details{margin-top:4px}
+details .mermaid{width:max-content;min-width:100%%;padding:20px}
 .mermaid-actions{display:flex;gap:8px;align-items:center;margin-top:4px}
 .fullview-btn{background:#0366d6;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600}
 .fullview-btn:hover{background:#0256b9}
@@ -618,9 +619,9 @@ func buildImportChainMermaid(row combinedRow, reachDisplay string) string {
 		mermaid.WriteString(mermaidClickDirective(nodeID, frame, true))
 	}
 
-	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>📦 import chain</summary><div class="mermaid">%s</div></details>`+
-		`<button class="fullview-btn" onclick="openMermaidModal(this)">Full view</button></div>`,
-		reachDisplay, mermaid.String())
+	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>📦 import chain</summary><div class="mermaid" data-original="%s">%s</div></details>`+
+		`<button class="fullview-btn" onclick="openMermaidModal(this)">🔍 Full view</button></div>`,
+		reachDisplay, strings.ReplaceAll(mermaid.String(), `"`, `&quot;`), mermaid.String())
 }
 
 func buildCallPathMermaid(row combinedRow, reachDisplay string) string {
@@ -654,9 +655,9 @@ func buildCallPathMermaid(row combinedRow, reachDisplay string) string {
 		mermaid.WriteString(mermaidClickDirective(nodeID, frame, false))
 	}
 
-	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>🔎 call path</summary><div class="mermaid">%s</div></details>`+
-		`<button class="fullview-btn" onclick="openMermaidModal(this)">Full view</button></div>`,
-		reachDisplay, mermaid.String())
+	return fmt.Sprintf(`%s<div class="mermaid-actions"><details><summary>🔎 call path</summary><div class="mermaid" data-original="%s">%s</div></details>`+
+		`<button class="fullview-btn" onclick="openMermaidModal(this)">🔍 Full view</button></div>`,
+		reachDisplay, strings.ReplaceAll(mermaid.String(), `"`, `&quot;`), mermaid.String())
 }
 
 var mermaidFileRe = regexp.MustCompile(`\(([^)]+\.go)\)`)
@@ -703,7 +704,11 @@ func mermaidClickForCallPath(nodeID, frame string) string {
 	if strings.HasPrefix(filename, "pkg/") || strings.HasPrefix(filename, "cmd/") ||
 		strings.HasPrefix(filename, "internal/") || strings.HasPrefix(filename, "test/") ||
 		strings.HasPrefix(filename, "e2e/") {
-		return fmt.Sprintf("    click %s \"#\" \"Operator source: %s\"\n", nodeID, filename)
+		key := strings.ToLower(scanComponent)
+		if cfg, ok := getConfig().Components[key]; ok && cfg.Repo != "" {
+			return fmt.Sprintf("    click %s \"https://%s/blob/main/%s\" _blank\n", nodeID, cfg.Repo, filename)
+		}
+		return ""
 	}
 
 	modPath := extractModulePath(filename)
@@ -777,13 +782,13 @@ function openMermaidModal(btn){
   if(!src)return;
   var modal=document.getElementById("mermaidModal");
   var body=document.getElementById("mermaidModalBody");
-  var clone=src.cloneNode(true);
-  clone.removeAttribute("data-processed");
-  clone.classList.add("mermaid");
-  body.innerHTML="";
-  body.appendChild(clone);
+  var fresh=document.createElement("div");
+  fresh.className="mermaid";
+  fresh.textContent=src.getAttribute("data-original")||src.textContent;
+  body.innerHTML='<div class="close" onclick="closeMermaidModal(event)">&times;</div>';
+  body.appendChild(fresh);
   modal.classList.add("active");
-  mermaid.run({nodes:[clone]});
+  mermaid.run({nodes:[fresh]});
 }
 function closeMermaidModal(e){
   var modal=document.getElementById("mermaidModal");
