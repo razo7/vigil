@@ -114,14 +114,14 @@ jobs:
             echo "📎 Download the full **HTML report** from [Artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts) for charts and diagrams."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload reports
+      - name: Upload component data
         uses: actions/upload-artifact@v4
         with:
-          name: vigil-${{ matrix.component }}-${{ github.run_number }}
+          name: scan-data-${{ matrix.component }}
           path: |
             ${{ matrix.component }}-scan.txt
             ${{ matrix.component }}-report.html
-          retention-days: 90
+          retention-days: 7
     strategy:
       fail-fast: false
       matrix:
@@ -136,7 +136,7 @@ jobs:
       - name: Download all scan artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: vigil-*
+          pattern: scan-data-*
           merge-multiple: true
 
       - name: Build consolidated summary
@@ -263,11 +263,14 @@ jobs:
           </script></body></html>
           JSEOF
 
-      - name: Upload consolidated report
+      - name: Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: vigil-weekly-report-${{ github.run_number }}
-          path: consolidated-report.html
+          name: vigil-report
+          path: |
+            consolidated-report.html
+            *-report.html
+            *-scan.txt
           retention-days: 90
 
       # Slack integration placeholder — uncomment and set SLACK_WEBHOOK_URL secret when ready
