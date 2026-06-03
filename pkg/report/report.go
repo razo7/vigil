@@ -67,6 +67,13 @@ Status:         %s`,
 		if r.Source.DueDate != "" {
 			comment += fmt.Sprintf("Due Date:       %s\n", r.Source.DueDate)
 		}
+		if r.Source.SLADueDate != "" {
+			slaLine := fmt.Sprintf("SLA Due Date:   %s", r.Source.SLADueDate)
+			if r.Source.SLAStatus != "" {
+				slaLine += fmt.Sprintf(" — %s (%d days remaining)", r.Source.SLAStatus, r.Source.DaysRemaining)
+			}
+			comment += slaLine + "\n"
+		}
 		if r.Source.JiraPriority != "" {
 			comment += fmt.Sprintf("Jira Priority:  %s\n", r.Source.JiraPriority)
 		}

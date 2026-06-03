@@ -15,6 +15,7 @@ import (
 	"github.com/razo7/vigil/pkg/goversion"
 	"github.com/razo7/vigil/pkg/jira"
 	"github.com/razo7/vigil/pkg/lifecycle"
+	"github.com/razo7/vigil/pkg/sla"
 	"github.com/razo7/vigil/pkg/types"
 )
 
@@ -268,6 +269,19 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	}
 
 	result.Recommendation.Action = generateRecommendation(result)
+
+	if ticket.Created != "" && severityLabel != "" {
+		if created, err := time.Parse("2006-01-02", ticket.Created); err == nil {
+			isKEV := sla.IsKEV(ticket.Labels)
+			dueDate := sla.CalculateDueDate(created, severityLabel, isKEV)
+			if !dueDate.IsZero() {
+				result.Source.SLADueDate = dueDate.Format("2006-01-02")
+				status, days := sla.Status(dueDate)
+				result.Source.SLAStatus = status
+				result.Source.DaysRemaining = days
+			}
+		}
+	}
 
 	return result, nil
 }

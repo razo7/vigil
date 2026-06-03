@@ -44,6 +44,9 @@ type SourceInfo struct {
 	Reporter                string   `json:"reporter,omitempty"`
 	Assignee                string   `json:"assignee,omitempty"`
 	DueDate                 string   `json:"due_date,omitempty"`
+	SLADueDate              string   `json:"sla_due_date,omitempty"`
+	SLAStatus               string   `json:"sla_status,omitempty"`
+	DaysRemaining           int      `json:"days_remaining,omitempty"`
 	Created                 string   `json:"created,omitempty"`
 	Updated                 string   `json:"updated,omitempty"`
 	JiraPriority            string   `json:"jira_priority,omitempty"`
