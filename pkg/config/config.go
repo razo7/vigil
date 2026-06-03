@@ -68,6 +68,7 @@ type OCPReleaseConfig struct {
 
 type OperatorMapping struct {
 	OperatorVersion string   `yaml:"operator_version"`
+	UpstreamVersion string   `yaml:"upstream_version,omitempty"`
 	OCPVersions     []string `yaml:"ocp_versions"`
 }
 
@@ -200,12 +201,12 @@ func DefaultLifecycle() LifecycleConfig {
 				{OperatorVersion: "0.11", OCPVersions: []string{"4.21"}},
 			},
 			"node-maintenance-operator": {
-				{OperatorVersion: "5.0", OCPVersions: []string{"4.12"}},
-				{OperatorVersion: "5.2", OCPVersions: []string{"4.14"}},
-				{OperatorVersion: "5.3", OCPVersions: []string{"4.16"}},
-				{OperatorVersion: "5.4", OCPVersions: []string{"4.14", "4.15", "4.16", "4.17", "4.18", "4.19"}},
-				{OperatorVersion: "5.5", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
-				{OperatorVersion: "5.6", OCPVersions: []string{"4.21"}},
+				{OperatorVersion: "5.0", UpstreamVersion: "0.14", OCPVersions: []string{"4.12"}},
+				{OperatorVersion: "5.2", UpstreamVersion: "0.16", OCPVersions: []string{"4.14"}},
+				{OperatorVersion: "5.3", UpstreamVersion: "0.17", OCPVersions: []string{"4.16"}},
+				{OperatorVersion: "5.4", UpstreamVersion: "0.18", OCPVersions: []string{"4.14", "4.15", "4.16", "4.17", "4.18", "4.19"}},
+				{OperatorVersion: "5.5", UpstreamVersion: "0.19", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
+				{OperatorVersion: "5.6", UpstreamVersion: "0.20", OCPVersions: []string{"4.21"}},
 			},
 			"machine-deletion-remediation": {
 				{OperatorVersion: "0.2", OCPVersions: []string{"4.14"}},

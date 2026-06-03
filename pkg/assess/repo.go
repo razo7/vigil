@@ -27,14 +27,14 @@ func ResolveRepoPath(path string) (repoPath string, cleanup func(), err error) {
 		return "", nil, fmt.Errorf("creating temp dir: %w", err)
 	}
 
-	cmd := exec.Command("git", "clone", path, tmpDir)
+	cmd := exec.Command("git", "clone", "--no-single-branch", path, tmpDir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		os.RemoveAll(tmpDir)
 		tmpDir, err = os.MkdirTemp("", "vigil-clone-*")
 		if err != nil {
 			return "", nil, fmt.Errorf("creating temp dir for retry: %w", err)
 		}
-		cmd2 := exec.Command("git", "-c", "http.version=HTTP/1.1", "clone", path, tmpDir)
+		cmd2 := exec.Command("git", "-c", "http.version=HTTP/1.1", "clone", "--no-single-branch", path, tmpDir)
 		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
 			os.RemoveAll(tmpDir)
 			return "", nil, fmt.Errorf("cloning %s: %s (retry: %s): %w", path, string(out), string(out2), err2)

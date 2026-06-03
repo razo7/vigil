@@ -121,6 +121,22 @@ lifecycle:
         ocp_versions: ["4.16", "4.17", "4.18", "4.19", "4.20"]
       - operator_version: "0.7"
         ocp_versions: ["4.21"]
+    node-maintenance-operator:
+      - operator_version: "5.3"
+        upstream_version: "0.17"
+        ocp_versions: ["4.16"]
+      - operator_version: "5.4"
+        upstream_version: "0.18"
+        ocp_versions: ["4.14", "4.15", "4.16", "4.17", "4.18", "4.19"]
+      - operator_version: "5.5"
+        upstream_version: "0.19"
+        ocp_versions: ["4.16", "4.17", "4.18", "4.19", "4.20"]
+      - operator_version: "5.6"
+        upstream_version: "0.20"
+        ocp_versions: ["4.21"]
+      - operator_version: "5.7"
+        upstream_version: "0.21"
+        ocp_versions: ["4.22"]
 
   # RHWA release → OCP version mapping (latest OCP in range).
   # Skips Konflux migration releases (rhwa-25.2 through 25.7).

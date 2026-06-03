@@ -329,7 +329,8 @@ func runCombinedScan() error {
 			}
 		}
 		for _, ver := range supportedVersions {
-			branch := goversion.ReleaseBranch(ver)
+			branchVer := lifecycle.LookupUpstreamVersion(operatorName, ver)
+			branch := goversion.ReleaseBranch(branchVer)
 			if !goversion.HasBranch(repoPath, branch) {
 				fmt.Fprintf(os.Stderr, "  Skipping %s (branch not found in repo)\n", branch)
 				continue

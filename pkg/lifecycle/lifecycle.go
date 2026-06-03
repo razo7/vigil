@@ -22,6 +22,7 @@ type OCPRelease struct {
 
 type OperatorOCPMapping struct {
 	OperatorVersion string
+	UpstreamVersion string
 	OCPVersions     []string
 }
 
@@ -71,13 +72,13 @@ var operatorMappings = map[string][]OperatorOCPMapping{
 		{OperatorVersion: "0.12", OCPVersions: []string{"4.22"}},
 	},
 	"node-maintenance-operator": {
-		{OperatorVersion: "5.0", OCPVersions: []string{"4.12"}},
-		{OperatorVersion: "5.2", OCPVersions: []string{"4.14"}},
-		{OperatorVersion: "5.3", OCPVersions: []string{"4.16"}},
-		{OperatorVersion: "5.4", OCPVersions: []string{"4.14", "4.15", "4.16", "4.17", "4.18", "4.19"}},
-		{OperatorVersion: "5.5", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
-		{OperatorVersion: "5.6", OCPVersions: []string{"4.21"}},
-		{OperatorVersion: "5.7", OCPVersions: []string{"4.22"}},
+		{OperatorVersion: "5.0", UpstreamVersion: "0.14", OCPVersions: []string{"4.12"}},
+		{OperatorVersion: "5.2", UpstreamVersion: "0.16", OCPVersions: []string{"4.14"}},
+		{OperatorVersion: "5.3", UpstreamVersion: "0.17", OCPVersions: []string{"4.16"}},
+		{OperatorVersion: "5.4", UpstreamVersion: "0.18", OCPVersions: []string{"4.14", "4.15", "4.16", "4.17", "4.18", "4.19"}},
+		{OperatorVersion: "5.5", UpstreamVersion: "0.19", OCPVersions: []string{"4.16", "4.17", "4.18", "4.19", "4.20"}},
+		{OperatorVersion: "5.6", UpstreamVersion: "0.20", OCPVersions: []string{"4.21"}},
+		{OperatorVersion: "5.7", UpstreamVersion: "0.21", OCPVersions: []string{"4.22"}},
 	},
 	"machine-deletion-remediation": {
 		{OperatorVersion: "0.2", OCPVersions: []string{"4.14"}},
@@ -105,6 +106,20 @@ func LookupOCPVersion(operatorName, operatorVersion string) string {
 		}
 	}
 	return ""
+}
+
+func LookupUpstreamVersion(operatorName, operatorVersion string) string {
+	mappings, ok := operatorMappings[operatorName]
+	if !ok {
+		return operatorVersion
+	}
+	normalizedVersion := normalizeVersion(operatorVersion)
+	for _, m := range mappings {
+		if normalizeVersion(m.OperatorVersion) == normalizedVersion && m.UpstreamVersion != "" {
+			return m.UpstreamVersion
+		}
+	}
+	return operatorVersion
 }
 
 func LookupSupportPhase(ocpVersion string) types.SupportPhase {
@@ -359,6 +374,7 @@ func ConfigFromYAML(cfg config.LifecycleConfig) ([]OCPRelease, map[string][]Oper
 		for i, m := range cfgMappings {
 			converted[i] = OperatorOCPMapping{
 				OperatorVersion: m.OperatorVersion,
+				UpstreamVersion: m.UpstreamVersion,
 				OCPVersions:     m.OCPVersions,
 			}
 		}
