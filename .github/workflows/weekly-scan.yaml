@@ -98,12 +98,6 @@ jobs:
             echo ""
             echo "**Result:** ${SUMMARY}"
             echo ""
-
-            # Render scan table — output already has emojis in ACTION column
-            echo '```'
-            echo "${CLEAN}" | grep -E "^(SRC|Jira |GVC  |Trivy |─)" | grep -v "Trivy found"
-            echo '```'
-            echo ""
             echo "<details><summary>📄 Raw scan output</summary>"
             echo ""
             echo '```'
