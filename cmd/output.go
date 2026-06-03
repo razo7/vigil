@@ -787,9 +787,9 @@ function filterTable(){
   var rows=document.getElementById("scanTable").getElementsByTagName("tr");
   for(var i=1;i<rows.length;i++){
     var r=rows[i];
-    if(!r.cells||r.cells.length<13)continue;
-    var actionText=r.cells[8].textContent;
-    var prioText=r.cells[9].textContent;
+    if(!r.cells||r.cells.length<12)continue;
+    var actionText=r.cells[7].textContent;
+    var prioText=r.cells[8].textContent;
     var verText=r.getAttribute("data-version")||"";
     var show=true;
     if(af&&actionText.indexOf(af)===-1)show=false;
