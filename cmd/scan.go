@@ -344,6 +344,30 @@ func runCombinedScan() error {
 				continue
 			}
 			branchResult, branchErr := goversion.RunGovulncheckWithVersion(wt, goMod.EffectiveVersion())
+
+			if scanTrivy {
+				trivyReport, trivyErr := trivy.Run(wt)
+				if trivyErr == nil {
+					branchTrivy := trivy.ToDiscoveredVulns(trivyReport, goMod.EffectiveVersion())
+					for _, tv := range branchTrivy {
+						for _, cveID := range tv.CVEIDs {
+							if existing := cveBranches[cveID]; len(existing) > 0 {
+								cveBranches[cveID] = append(cveBranches[cveID], branch)
+							} else {
+								cveBranches[cveID] = []string{branch}
+								tv.Source = fmt.Sprintf("Trivy(%s)", branch)
+								tv.Version = ver
+								if discResult == nil {
+									discResult = &types.DiscoverResult{}
+								}
+								discResult.Vulns = append(discResult.Vulns, tv)
+								discResult.TotalVulns++
+								discResult.NoTicket++
+							}
+						}
+					}
+				}
+			}
 			cleanup()
 			if branchErr != nil {
 				fmt.Fprintf(os.Stderr, "WARNING: govulncheck on %s failed: %v\n", branch, branchErr)
@@ -375,6 +399,7 @@ func runCombinedScan() error {
 						Package:     entry.Package,
 						Description: entry.ID,
 						Source:       fmt.Sprintf("GVC(%s)", branch),
+						Version:     ver,
 					}
 					if entry.Reachable {
 						dv.Reachability = "REACHABLE"
@@ -793,7 +818,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			src:            compositeSource("G", false, gapInTrivy),
 			ticket:         "-- none --",
 			cveID:          formatCVEAliases(v.CVEIDs, 0),
-			version:        "",
+			version:        v.Version,
 			lang:           "Go",
 			langSrc:        "gvc",
 			status:         "No ticket",
