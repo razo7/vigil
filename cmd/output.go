@@ -365,7 +365,7 @@ details .mermaid{width:max-content;min-width:100%%;padding:20px}
 	printHTMLVersionTabs(uniqueVersions)
 
 	fmt.Println(`<table id="scanTable"><thead><tr>
-<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">DUE</th><th onclick="sortTable(5)">CVE</th><th onclick="sortTable(6)">VERSION</th><th onclick="sortTable(7)">ACTION</th><th onclick="sortTable(8)">PRIORITY</th><th onclick="sortTable(9)">PACKAGE</th><th onclick="sortTable(10)">CVSS</th><th onclick="sortTable(11)">REACHABILITY</th><th onclick="sortTable(12)">LANG</th>
+<th onclick="sortTable(0)">SRC</th><th onclick="sortTable(1)">TICKET</th><th onclick="sortTable(2)">CREATED</th><th onclick="sortTable(3)">UPDATED</th><th onclick="sortTable(4)">DUE</th><th onclick="sortTable(5)">CVE</th><th onclick="sortTable(6)">VERSION</th><th onclick="sortTable(7)">ACTION</th><th onclick="sortTable(8)">PRIORITY</th><th onclick="sortTable(9)">PACKAGE</th><th onclick="sortTable(10)">CVSS</th><th onclick="sortTable(11)">REACHABILITY</th>
 </tr></thead><tbody>`)
 
 	for _, row := range rows {
@@ -540,10 +540,7 @@ func printHTMLVersionTabs(versions []string) {
 }
 
 func printHTMLTableRow(row combinedRow, latestVersion string, cveVersions map[string][]string) {
-	langDisplay := row.lang
-	if row.langSrc != "" {
-		langDisplay = fmt.Sprintf("%s(%s)", row.lang, row.langSrc)
-	}
+	srcDisplay := fmt.Sprintf("%s (%s)", row.src, row.lang)
 	pkgDisplay := row.pkg
 	if row.pkgSrc != "" && row.pkg != "" {
 		pkgDisplay = fmt.Sprintf("%s(%s)", row.pkg, row.pkgSrc)
@@ -579,9 +576,8 @@ func printHTMLTableRow(row combinedRow, latestVersion string, cveVersions map[st
 		versionAttr = "main"
 	}
 
-	// Column order: SRC TICKET CREATED UPDATED DUE CVE VERSION ACTION PRIORITY PACKAGE CVSS REACHABILITY LANG
-	fmt.Printf(`<tr id="%s" data-version="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td style="white-space:normal;word-break:break-word;max-width:220px">%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td><td>%s</td></tr>`,
-		row.ticket, versionAttr, row.src, ticketCell, row.created, row.updated, dueCell, cveCell, row.version, actionCell, prioCell, pkgDisplay, row.cvss, reachCell, langDisplay)
+	fmt.Printf(`<tr id="%s" data-version="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td style="white-space:normal;word-break:break-word;max-width:220px">%s</td><td>%s</td><td>%s</td><td>%.1f</td><td>%s</td></tr>`,
+		row.ticket, versionAttr, srcDisplay, ticketCell, row.created, row.updated, dueCell, cveCell, row.version, actionCell, prioCell, pkgDisplay, row.cvss, reachCell)
 	fmt.Println()
 }
 

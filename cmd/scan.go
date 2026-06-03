@@ -892,7 +892,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 
 	type renderedRow struct {
 		src, ticket, ticketURL, created, updated, slaDue, cveID, cveURL string
-		version, lang, action, priority, pkg                            string
+		version, action, priority, pkg                                  string
 		cvss                                                            float64
 		reach                                                           string
 		rawStatus                                                       string
@@ -923,10 +923,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	for _, row := range rows {
 		counts[row.classification]++
 
-		langDisplay := row.lang
-		if row.langSrc != "" {
-			langDisplay = fmt.Sprintf("%s(%s)", row.lang, row.langSrc)
-		}
+		srcDisplay := fmt.Sprintf("%s (%s)", row.src, row.lang)
 		pkgDisplay := row.pkg
 		if row.pkgSrc != "" && row.pkg != "" {
 			pkgDisplay = fmt.Sprintf("%s(%s)", row.pkg, row.pkgSrc)
@@ -953,7 +950,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		}
 
 		rendered = append(rendered, renderedRow{
-			src:            row.src,
+			src:            srcDisplay,
 			ticket:         ticketWithStatus,
 			ticketURL:      row.ticketURL,
 			created:        row.created,
@@ -963,7 +960,6 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			cveID:          row.cveID,
 			cveURL:         row.cveURL,
 			version:        row.version,
-			lang:           langDisplay,
 			rawStatus:      row.rawStatus,
 			action:         buildAction(row, latestVer, cveVersions),
 			classification: row.classification,
@@ -975,8 +971,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		})
 	}
 
-	// Column order: SRC TICKET CREATED UPDATED DUE CVE VERSION ACTION PRIORITY PACKAGE CVSS REACHABILITY LANG
-	headers := []string{"SRC", "TICKET", "CREATED", "UPDATED", "DUE", "CVE", "VERSION", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY", "LANG"}
+	headers := []string{"SRC", "TICKET", "CREATED", "UPDATED", "DUE", "CVE", "VERSION", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY"}
 	cols := make([][]string, len(headers))
 	for _, r := range rendered {
 		cols[0] = append(cols[0], r.src)
@@ -991,15 +986,14 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		cols[9] = append(cols[9], r.pkg)
 		cols[10] = append(cols[10], fmt.Sprintf("%.1f", r.cvss))
 		cols[11] = append(cols[11], r.reach)
-		cols[12] = append(cols[12], r.lang)
 	}
 	w := make([]int, len(headers))
 	for i, h := range headers {
 		w[i] = colWidth(h, cols[i])
 	}
 
-	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%-%ds %%-%ds\n",
-		w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11], w[12])
+	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%ds %%-%ds\n",
+		w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11])
 	lineWidth := 0
 	for _, ww := range w {
 		lineWidth += ww
@@ -1008,11 +1002,11 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 
 	if isTTY {
 		fmt.Printf("\033[1m"+fmtStr+colorReset,
-			"SRC", "TICKET", "CREATED", "UPDATED", "DUE", "CVE", "VERSION", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY", "LANG")
+			"SRC", "TICKET", "CREATED", "UPDATED", "DUE", "CVE", "VERSION", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("─", lineWidth))
 	} else {
 		fmt.Printf(fmtStr,
-			"SRC", "TICKET", "CREATED", "UPDATED", "DUE", "CVE", "VERSION", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY", "LANG")
+			"SRC", "TICKET", "CREATED", "UPDATED", "DUE", "CVE", "VERSION", "ACTION", "PRIORITY", "PACKAGE", "CVSS", "REACHABILITY")
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
@@ -1024,19 +1018,19 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			actionColor := colorForAction(r.action)
 			prioColor := colorForPriority(r.priorityVal)
 			srcColor := colorForSource(r.src)
-			fmt.Printf(fmt.Sprintf("%%s%%-%ds%%s %%s %%-%ds %%-%ds %%s%%-%ds%%s %%s %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%-%ds %%-%ds\n",
-				w[0], w[2], w[3], w[4], w[6], w[7], w[8], w[9], w[10], w[11], w[12]),
+			fmt.Printf(fmt.Sprintf("%%s%%-%ds%%s %%s %%-%ds %%-%ds %%s%%-%ds%%s %%s %%-%ds %%s%%-%ds%%s %%s%%-%ds%%s %%-%ds %%%d.1f %%-%ds\n",
+				w[0], w[2], w[3], w[4], w[6], w[7], w[8], w[9], w[10], w[11]),
 				srcColor, r.src, colorReset,
 				ticketDisplay, r.created, r.updated,
 				dueColor, r.slaDue, colorReset,
 				cveDisplay, r.version,
 				actionColor, r.action, colorReset,
 				prioColor, r.priority, colorReset,
-				r.pkg, r.cvss, r.reach, r.lang)
+				r.pkg, r.cvss, r.reach)
 		} else {
-			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%-%ds %%-%ds\n",
-				w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11], w[12]),
-				r.src, r.ticket, r.created, r.updated, r.slaDue, r.cveID, r.version, r.action, r.priority, r.pkg, r.cvss, r.reach, r.lang)
+			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%%d.1f %%-%ds\n",
+				w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11]),
+				r.src, r.ticket, r.created, r.updated, r.slaDue, r.cveID, r.version, r.action, r.priority, r.pkg, r.cvss, r.reach)
 		}
 	}
 
