@@ -154,30 +154,56 @@ xdg-open far-report.html
 
 Produces a standalone HTML file with colored classification/priority badges, clickable Jira and CVE links, sticky headers, and hover highlighting. The terminal `--short` output uses ANSI colors; `--format html` preserves the same color scheme for browsers.
 
-**Classification decision tree:**
+**Classification decision tree** (based on ProdsecTeam CVE assessment policies):
 
 ```
-1. Is it a Go CVE?
+1. Is the vulnerable code present in the product?
+   ├─ No → 🟢 Close (code doesn't exist)
+   └─ Yes ↓
+
+2. Is it a Go CVE?
    ├─ No → ❓ Unknown (manual review)
    └─ Yes ↓
-2. Is the image a bundle (OLM metadata)?
-   ├─ Yes + Go CVE → ↩️ Misassigned
+
+3. Is the image a bundle (OLM metadata)?
+   ├─ Yes + Go CVE → ↩️ Misassigned (no Go runtime in bundle)
    ├─ Yes + non-Go → ❓ Unknown (check if bundle uses it)
    └─ No ↓
-3. Is the operator version EOL?
-   ├─ Yes → ↩️ EOL
+
+4. Is the operator version EOL?
+   ├─ Yes → ↩️ EOL (no fix required)
    └─ No ↓
-4. Is the code reachable? (govulncheck + fix-function match)
+
+5. Is the code reachable? (govulncheck + fix-function match)
    ├─ Not imported → 🟢 No action
-   ├─ Module-level only → 🟢 No action
-   ├─ Fix-function mismatch → 🟢 No action (verified via Gerrit CL)
+   ├─ Module-level only → 🟢 No action (go.mod only)
+   ├─ Package imported but fix functions not called
+   │   → 🟢 Affected but not Impacted (close with justification)
    └─ Reachable or package-level ↓
-5. Is the fix deployable? (downstream Go version via skopeo)
-   ├─ Needs newer Go → 🟠⏳ Blocked
+
+6. Is the fix deployable? (downstream Go version check)
+   ├─ Needs newer Go → 🟠⏳ Blocked (needs Go X.Y.Z)
    └─ Deployable ↓
-6. Which supported versions are affected?
-   └─ 🔴🔧 Fix on v0.2, v0.4, ...
+
+7. Does the CVE qualify for this version's lifecycle phase?
+   ├─ Full Support → fix all Critical + Important
+   ├─ Maintenance / EUS → fix ONLY if RH rates Critical or Important
+   │   (upstream rating irrelevant if RH downgrades to Moderate/Low)
+   └─ EOL → no fix ↓
+
+8. Which supported versions are affected?
+   └─ 🔴🔧 Fix on v0.4 (Full Support), v0.6 (EUS)
 ```
+
+Lifecycle phases (from https://access.redhat.com/support/policy/updates/openshift#ocp):
+
+| Phase | Duration | Fixes Required |
+|-------|----------|---------------|
+| Full Support | 0–6 months from GA | All qualified Critical + Important |
+| Maintenance | 6–18 months | Critical + Important ONLY |
+| EUS Term 1 | 18–24 months | Critical + Important backports |
+| EUS Term 2 | 24–36 months | Critical + Important backports |
+| EUS Term 3 | 36–48 months | Critical + Important backports |
 
 **Color legend:**
 
