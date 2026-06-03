@@ -799,7 +799,7 @@ function closeMermaidModal(e){
 }
 </script>`)
 
-	fmt.Println(`<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>`)
+	fmt.Println(`<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" integrity="sha384-yQ4mmBBT+vhTAwjFH0toJXNYJ6O4usWnt6EPIdWwrRvx2V/n5lXuDZQwQFeSFydF" crossorigin="anonymous"></script>`)
 	fmt.Println(`<script>
 mermaid.initialize({startOnLoad:false,theme:'neutral',securityLevel:'loose'});
 document.querySelectorAll('details').forEach(function(d){
