@@ -1060,38 +1060,70 @@ func buildAction(row combinedRow, latestVer string, cveVersions map[string][]str
 		return "↩️ Misassigned"
 	case types.NotReachable:
 		if row.fixFunctionMismatch {
-			return "\U0001F7E2 No action (verified)"
+			return "\U0001F7E2 Affected not Impacted"
 		}
 		return "\U0001F7E2 No action"
 	case types.BlockedByGo:
 		return "\U0001F7E0⏳ Blocked"
 	case types.FixableNow:
-		return buildFixAction(row.cveID, row.version, latestVer, cveVersions)
+		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss)
 	default:
 		return "❓ Manual review"
 	}
 }
 
-func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string) string {
+func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string, cvss float64) string {
+	isQualified := cvss >= 7.0
+
+	operatorName := ""
+	key := strings.ToLower(scanComponent)
+	if cfg := getConfig().Components[key]; cfg.OperatorName != "" {
+		operatorName = cfg.OperatorName
+	}
+
 	versions := cveVersions[cveID]
-	var affected []string
+	var qualified []string
+	var skipped []string
 	seen := map[string]bool{}
 	for _, v := range versions {
 		if v == "main" {
 			continue
 		}
-		if !seen[v] {
-			seen[v] = true
-			affected = append(affected, "v"+strings.TrimPrefix(v, "v"))
+		if seen[v] {
+			continue
 		}
+		seen[v] = true
+
+		ver := "v" + strings.TrimPrefix(v, "v")
+
+		if operatorName != "" {
+			phase := lifecycle.LookupSupportPhase(lifecycle.LookupOCPVersion(operatorName, v))
+			if phase == types.PhaseEOL {
+				continue
+			}
+			isFullSupport := phase == types.PhaseGA
+			if !isFullSupport && !isQualified {
+				skipped = append(skipped, ver)
+				continue
+			}
+		}
+		qualified = append(qualified, ver)
 	}
-	if len(affected) == 0 {
+
+	if len(qualified) == 0 && len(skipped) > 0 {
+		return "\U0001F7E2 Skip (Moderate — doesn't qualify for Maintenance/EUS)"
+	}
+	if len(qualified) == 0 {
 		return "\U0001F534\U0001F527 Fix latest"
 	}
-	sort.Slice(affected, func(i, j int) bool {
-		return compareVersionStrings(affected[i], affected[j]) < 0
+	sort.Slice(qualified, func(i, j int) bool {
+		return compareVersionStrings(qualified[i], qualified[j]) < 0
 	})
-	return "\U0001F534\U0001F527 Fix on " + strings.Join(affected, ", ")
+	action := "\U0001F534\U0001F527 Fix on " + strings.Join(qualified, ", ")
+	if len(skipped) > 0 {
+		action += " (skip " + strings.Join(skipped, ", ") + " — Moderate)"
+	}
+	return action
 }
 
 func colorForAction(action string) string {
