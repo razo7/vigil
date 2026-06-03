@@ -194,7 +194,11 @@ func RunGovulncheckWithVersion(repoPath, goVersion string) (*VulncheckResult, er
 		return &VulncheckResult{}, nil
 	}
 
-	result, err := parseGovulncheckOutput(stdout.Bytes())
+	ownModule := ""
+	if goMod, modErr := ReadGoMod(repoPath); modErr == nil {
+		ownModule = goMod.ModulePath
+	}
+	result, err := parseGovulncheckOutput(stdout.Bytes(), ownModule)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +210,11 @@ func RunGovulncheckWithVersion(repoPath, goVersion string) (*VulncheckResult, er
 	return result, nil
 }
 
-func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
+func parseGovulncheckOutput(data []byte, ownModulePath ...string) (*VulncheckResult, error) {
+	ownModule := ""
+	if len(ownModulePath) > 0 {
+		ownModule = ownModulePath[0]
+	}
 	result := &VulncheckResult{}
 	osvMap := make(map[string]*vulncheckOSV)
 	findingsMap := make(map[string][]*vulncheckFinding)
@@ -258,7 +266,12 @@ func parseGovulncheckOutput(data []byte) (*VulncheckResult, error) {
 						name = frame.Receiver + "." + name
 					}
 					if frame.Position != nil && frame.Position.Filename != "" {
-						name += " (" + frame.Position.Filename + ")"
+						repoRelPath := buildRepoRelativePath(frame.Position.Filename, frame.Module, ownModule)
+						loc := repoRelPath
+						if frame.Position.Line > 0 {
+							loc = fmt.Sprintf("%s:%d", repoRelPath, frame.Position.Line)
+						}
+						name += " (" + loc + ")"
 						lastFilename = frame.Position.Filename
 					}
 					callParts = append(callParts, name)
@@ -354,6 +367,22 @@ func ReachabilityLabel(entry *VulnEntry) string {
 		return "PACKAGE-LEVEL"
 	}
 	return "MODULE-LEVEL"
+}
+
+func buildRepoRelativePath(filename, module, ownModule string) string {
+	if module == "stdlib" {
+		if strings.HasPrefix(filename, "src/") {
+			return filename
+		}
+		if i := strings.Index(filename, "/src/"); i >= 0 {
+			return filename[i+1:]
+		}
+		return "src/" + filename
+	}
+	if module == ownModule || module == "" {
+		return filename
+	}
+	return "vendor/" + module + "/" + filename
 }
 
 func isTestFile(filename string) bool {

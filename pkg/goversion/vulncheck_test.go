@@ -44,9 +44,9 @@ func TestParseGovulncheckOutput_MultiLineJSON(t *testing.T) {
     "osv": "GO-2026-4870",
     "fixed_version": "v1.25.9",
     "trace": [
-      {"module": "stdlib", "package": "crypto/tls", "function": "HandshakeContext", "receiver": "*Conn", "position": {"filename": "/usr/local/go/src/crypto/tls/conn.go", "line": 166}},
-      {"module": "stdlib", "package": "net/http", "function": "Do", "receiver": "*Client", "position": {"filename": "/usr/local/go/src/net/http/client.go", "line": 597}},
-      {"module": "example.com/myapp", "package": "example.com/myapp/pkg", "function": "Fetch", "position": {"filename": "/home/user/myapp/pkg/fetch.go", "line": 42}}
+      {"module": "stdlib", "package": "crypto/tls", "function": "HandshakeContext", "receiver": "*Conn", "position": {"filename": "src/crypto/tls/conn.go", "line": 166}},
+      {"module": "stdlib", "package": "net/http", "function": "Do", "receiver": "*Client", "position": {"filename": "src/net/http/client.go", "line": 597}},
+      {"module": "example.com/myapp", "package": "example.com/myapp/pkg", "function": "Fetch", "position": {"filename": "pkg/fetch.go", "line": 42}}
     ]
   }
 }
@@ -91,9 +91,10 @@ func TestParseGovulncheckOutput_MultiLineJSON(t *testing.T) {
 		t.Errorf("expected fix version 1.25.9, got %s", vuln.FixVersion)
 	}
 
-	expectedPath := "*Conn.HandshakeContext (/usr/local/go/src/crypto/tls/conn.go) → *Client.Do (/usr/local/go/src/net/http/client.go) → Fetch (/home/user/myapp/pkg/fetch.go)"
+	expectedPath := "*Conn.HandshakeContext (src/crypto/tls/conn.go:166) → *Client.Do (src/net/http/client.go:597) → Fetch (vendor/example.com/myapp/pkg/fetch.go:42)"
+	// Note: stdlib paths keep src/ prefix, vendored deps get vendor/<module>/ prefix
 	if len(vuln.CallPaths) != 1 || vuln.CallPaths[0] != expectedPath {
-		t.Errorf("unexpected call paths: %v", vuln.CallPaths)
+		t.Errorf("unexpected call paths:\n  got:  %s\n  want: %s", vuln.CallPaths[0], expectedPath)
 	}
 }
 

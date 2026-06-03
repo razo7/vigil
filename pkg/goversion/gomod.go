@@ -16,6 +16,7 @@ var (
 )
 
 type GoModInfo struct {
+	ModulePath       string
 	MinVersion       string
 	ToolchainVersion string
 	GoLine           int
@@ -36,6 +37,9 @@ func ReadGoMod(repoPath string) (*GoModInfo, error) {
 		lineNum++
 		line := strings.TrimSpace(scanner.Text())
 
+		if strings.HasPrefix(line, "module ") && info.ModulePath == "" {
+			info.ModulePath = strings.TrimSpace(strings.TrimPrefix(line, "module"))
+		}
 		if m := goVersionRe.FindStringSubmatch(line); len(m) > 1 {
 			info.MinVersion = strings.TrimSpace(m[1])
 			info.GoLine = lineNum
