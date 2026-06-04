@@ -23,6 +23,7 @@ type DiscoveredVuln struct {
 	TicketStatus   string         `json:"ticket_status,omitempty"`
 	Source         string         `json:"source"`
 	Version        string         `json:"version,omitempty"`
+	CurrentGo      string         `json:"current_go,omitempty"`
 	CVEPublished   string         `json:"cve_published,omitempty"`
 }
 

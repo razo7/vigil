@@ -413,6 +413,9 @@ func runCombinedScan() error {
 						Description: entry.ID,
 						Source:       fmt.Sprintf("GVC(%s)", branch),
 						Version:     ver,
+						CurrentGo:   goMod.EffectiveVersion(),
+						FixVersion:  entry.FixVersion,
+						CallPaths:   entry.CallPaths,
 					}
 					if entry.Reachable {
 						dv.Reachability = "REACHABLE"
@@ -1014,8 +1017,8 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			gapVersion = "main"
 		}
 		sortedIDs := preferCVEIDs(v.CVEIDs)
-		gapCurrentGo := ""
-		if disc != nil {
+		gapCurrentGo := v.CurrentGo
+		if gapCurrentGo == "" && disc != nil {
 			gapCurrentGo = disc.GoVersion
 		}
 		gapRow := combinedRow{
