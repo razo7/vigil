@@ -437,7 +437,7 @@ func runCombinedScan() error {
 				}
 			}
 			if newCount > 0 {
-				fmt.Fprintf(os.Stderr, "  %s: %d new CVEs, others confirmed on this branch too\n", branch, newCount)
+				fmt.Fprintf(os.Stderr, "  %s: %d new CVEs (also affects previously found CVEs)\n", branch, newCount)
 			}
 		}
 	}
@@ -895,8 +895,10 @@ func groupByCVE(rows []combinedRow) []groupedRow {
 
 		versionSet := map[string]bool{}
 		ticketSet := map[string]bool{}
+		statusSet := map[string]bool{}
 		var versions []string
 		var tickets []string
+		var statuses []string
 
 		for _, r := range g.rows {
 			if !versionSet[r.version] {
@@ -906,6 +908,10 @@ func groupByCVE(rows []combinedRow) []groupedRow {
 			if r.ticket != "-- none --" && r.ticket != "" && !ticketSet[r.ticket] {
 				ticketSet[r.ticket] = true
 				tickets = append(tickets, r.ticket)
+			}
+			if r.rawStatus != "" && r.rawStatus != "No ticket" && !statusSet[r.rawStatus] {
+				statusSet[r.rawStatus] = true
+				statuses = append(statuses, r.rawStatus)
 			}
 
 			if priorityOrder[r.priority] < priorityOrder[summary.priority] {
@@ -939,7 +945,26 @@ func groupByCVE(rows []combinedRow) []groupedRow {
 
 		summary.version = strings.Join(versions, ",")
 		if len(tickets) > 0 {
-			summary.ticket = strings.Join(tickets, ",")
+			if len(statuses) == 1 {
+				summary.ticket = strings.Join(tickets, ",")
+				summary.status = statuses[0]
+				summary.rawStatus = statuses[0]
+			} else if len(statuses) > 1 {
+				var ticketsWithStatus []string
+				seen := map[string]bool{}
+				for _, r := range g.rows {
+					if r.ticket == "-- none --" || r.ticket == "" || seen[r.ticket] {
+						continue
+					}
+					seen[r.ticket] = true
+					ticketsWithStatus = append(ticketsWithStatus, fmt.Sprintf("%s(%s)", r.ticket, r.rawStatus))
+				}
+				summary.ticket = strings.Join(ticketsWithStatus, ", ")
+				summary.status = ""
+				summary.rawStatus = statuses[0]
+			} else {
+				summary.ticket = strings.Join(tickets, ",")
+			}
 		}
 
 		result = append(result, groupedRow{combinedRow: summary, subRows: g.rows})
@@ -1426,6 +1451,11 @@ func buildAction(row combinedRow, latestVer string, cveVersions map[string][]str
 		}
 		return "\U0001F7E2 No action"
 	case types.BlockedByGo:
+		if row.fixVersion != "" && row.currentGo != "" {
+			return fmt.Sprintf("\U0001F7E0⏳ Blocked (Go %s → %s)", row.currentGo, row.fixVersion)
+		} else if row.fixVersion != "" {
+			return fmt.Sprintf("\U0001F7E0⏳ Blocked (needs Go %s)", row.fixVersion)
+		}
 		return "\U0001F7E0⏳ Blocked"
 	case types.FixableNow:
 		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion, row.currentGo, row.pkg, row.installedVersion)
