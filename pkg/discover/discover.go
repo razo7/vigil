@@ -25,6 +25,7 @@ type Options struct {
 	Since        string
 	ComponentMap map[string]string
 	ProjectJQL   string
+	Blame        bool
 }
 
 var defaultComponentMap = map[string]string{
@@ -77,7 +78,12 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 	} else {
 		fmt.Fprintf(os.Stderr, "Running govulncheck on %s (Go %s)...\n", repoPath, currentGo)
 	}
-	vulnResult, err := goversion.RunGovulncheckWithVersion(repoPath, currentGo)
+	var vulnResult *goversion.VulncheckResult
+	if opts.Blame {
+		vulnResult, err = goversion.RunGovulncheckWithBlame(repoPath, currentGo)
+	} else {
+		vulnResult, err = goversion.RunGovulncheckWithVersion(repoPath, currentGo)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("running govulncheck: %w", err)
 	}

@@ -124,7 +124,13 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 	var vulnEntry *goversion.VulnEntry
 
 	if isGoVuln {
-		vulnResult, err := goversion.RunGovulncheckWithVersion(scanPath, currentGo)
+		var vulnResult *goversion.VulncheckResult
+		var err error
+		if opts.Blame {
+			vulnResult, err = goversion.RunGovulncheckWithBlame(scanPath, currentGo)
+		} else {
+			vulnResult, err = goversion.RunGovulncheckWithVersion(scanPath, currentGo)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("running govulncheck: %w", err)
 		}

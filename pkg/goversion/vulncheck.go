@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -174,6 +175,15 @@ func ensureGoToolchain(version string) error {
 
 	fmt.Fprintf(os.Stderr, "Go %s toolchain ready\n", version)
 	return nil
+}
+
+func RunGovulncheckWithBlame(repoPath, goVersion string) (*VulncheckResult, error) {
+	result, err := RunGovulncheckWithVersion(repoPath, goVersion)
+	if err != nil {
+		return nil, err
+	}
+	annotateBlame(repoPath, result)
+	return result, nil
 }
 
 func RunGovulncheckWithVersion(repoPath, goVersion string) (*VulncheckResult, error) {
@@ -367,6 +377,63 @@ func ReachabilityLabel(entry *VulnEntry) string {
 		return "PACKAGE-LEVEL"
 	}
 	return "MODULE-LEVEL"
+}
+
+var blameFrameRe = regexp.MustCompile(`\(([^)]+):(\d+)\)$`)
+
+func annotateBlame(repoPath string, result *VulncheckResult) {
+	blameCount := 0
+	for i := range result.Vulns {
+		for j, path := range result.Vulns[i].CallPaths {
+			frames := strings.Split(path, " → ")
+			changed := false
+			for k, frame := range frames {
+				m := blameFrameRe.FindStringSubmatch(frame)
+				if m == nil {
+					continue
+				}
+				filePath := m[1]
+				line := m[2]
+				if strings.HasPrefix(filePath, "src/") {
+					continue
+				}
+				sha := gitBlame(repoPath, filePath, line)
+				if sha != "" {
+					frames[k] = strings.TrimSuffix(frame, ")") + "@" + sha + ")"
+					changed = true
+					blameCount++
+				}
+			}
+			if changed {
+				result.Vulns[i].CallPaths[j] = strings.Join(frames, " → ")
+			}
+		}
+	}
+	if blameCount > 0 {
+		fmt.Fprintf(os.Stderr, "Annotated %d call path frames with git blame\n", blameCount)
+	}
+}
+
+func gitBlame(repoPath, filePath, line string) string {
+	fullPath := filepath.Join(repoPath, filePath)
+	if _, err := os.Stat(fullPath); err != nil {
+		return ""
+	}
+	cmd := exec.Command("git", "blame", "-L", line+","+line, "--porcelain", "--", filePath)
+	cmd.Dir = repoPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) > 0 && len(fields[0]) >= 7 {
+		sha := fields[0]
+		if sha == strings.Repeat("0", len(sha)) {
+			return ""
+		}
+		return sha[:7]
+	}
+	return ""
 }
 
 func buildRepoRelativePath(filename, module, ownModule string) string {
