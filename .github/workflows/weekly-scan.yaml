@@ -145,7 +145,7 @@ jobs:
             for f in *-scan.txt; do
               COMP=$(basename "$f" -scan.txt)
               SUMMARY=$(tail -1 "$f")
-              assessed=$(echo "$SUMMARY" | grep -oP '\d+ assessed' || echo "0 assessed")
+              assessed=$(echo "$SUMMARY" | grep -oP '\d+ Jira tickets' || echo "0 Jira tickets")
               fixable=$(echo "$SUMMARY" | grep -oP '\d+ fixable' || echo "0 fixable")
               notreach=$(echo "$SUMMARY" | grep -oP '\d+ not-reachable' || echo "0 not-reachable")
               disc=$(echo "$SUMMARY" | grep -oP '\d+ discovered[^,]*' || echo "0 discovered")
@@ -195,7 +195,7 @@ jobs:
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
             SUMMARY=$(tail -1 "$f")
-            assessed=$(echo "$SUMMARY" | grep -oP '\d+ assessed' | grep -oP '\d+' || echo 0)
+            assessed=$(echo "$SUMMARY" | grep -oP '\d+ Jira tickets' | grep -oP '\d+' || echo 0)
             fixable=$(echo "$SUMMARY" | grep -oP '\d+ fixable' | grep -oP '\d+' || echo 0)
             total_assessed=$((total_assessed + assessed))
             total_fixable=$((total_fixable + fixable))
@@ -225,7 +225,7 @@ jobs:
           num_comps=0
           for f in *-scan.txt; do
             S=$(tail -1 "$f")
-            assessed=$(echo "$S" | grep -oP '\d+(?= assessed)' || echo 0)
+            assessed=$(echo "$S" | grep -oP '\d+(?= Jira tickets)' || echo 0)
             fix=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
             nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)
@@ -307,7 +307,7 @@ jobs:
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
             S=$(tail -1 "$f")
-            assessed=$(echo "$S" | grep -oP '\d+(?= assessed)' || echo 0)
+            assessed=$(echo "$S" | grep -oP '\d+(?= Jira tickets)' || echo 0)
             fixable=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
             nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)

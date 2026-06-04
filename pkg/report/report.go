@@ -25,8 +25,8 @@ CVE:            %s`,
 CWE:            %s`, cwe)
 	}
 	comment += fmt.Sprintf(`
-Severity:       %.1f (%s)`,
-		r.Vulnerability.Severity, r.Vulnerability.SeverityLabel,
+Severity:       %s (%.1f)`,
+		r.Vulnerability.SeverityLabel, r.Vulnerability.Severity,
 	)
 	if r.Vulnerability.VulnID != "" {
 		comment += fmt.Sprintf("\nVuln ID:        %s", r.Vulnerability.VulnID)
@@ -73,9 +73,6 @@ Status:         %s`,
 				slaLine += fmt.Sprintf(" — %s (%d days remaining)", r.Source.SLAStatus, r.Source.DaysRemaining)
 			}
 			comment += slaLine + "\n"
-		}
-		if r.Source.JiraPriority != "" {
-			comment += fmt.Sprintf("Jira Priority:  %s\n", r.Source.JiraPriority)
 		}
 	}
 	if r.Source.Labels != "" {
