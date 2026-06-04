@@ -502,9 +502,11 @@ func printHTMLFilterBar(versions []string) {
 	fmt.Println(`<div class="filter-bar">`)
 	fmt.Println(`<label>Action:</label><select id="actionFilter" onchange="filterTable()">
 <option value="">All</option>
-<option value="Fix on">Fix</option>
+<option value="Fix">Fix</option>
 <option value="Blocked">Blocked</option>
 <option value="No action">No action</option>
+<option value="Affected not Impacted">Affected not Impacted</option>
+<option value="Skip">Skip</option>
 <option value="Manual review">Manual review</option>
 <option value="EOL">EOL</option>
 <option value="Misassigned">Misassigned</option>
@@ -654,16 +656,22 @@ func buildCallPathMermaid(row combinedRow, reachDisplay string) string {
 		return reachDisplay
 	}
 
+	repoURL := ""
+	key := strings.ToLower(scanComponent)
+	if cfg, ok := getConfig().Components[key]; ok && cfg.Repo != "" {
+		repoURL = "https://" + cfg.Repo
+	}
+
 	var mermaid strings.Builder
 	mermaid.WriteString("graph LR\n")
 	for i, frame := range frames {
-		safeFrame := strings.ReplaceAll(frame, `"`, "'")
+		nodeLabel := buildMermaidNodeLabel(frame, repoURL)
 		nodeID := fmt.Sprintf("N%d", i)
 		if i < len(frames)-1 {
 			nextID := fmt.Sprintf("N%d", i+1)
-			fmt.Fprintf(&mermaid, "    %s[\"%s\"] --> %s\n", nodeID, safeFrame, nextID)
+			fmt.Fprintf(&mermaid, "    %s[\"%s\"] --> %s\n", nodeID, nodeLabel, nextID)
 		} else {
-			fmt.Fprintf(&mermaid, "    %s[\"%s\"]\n", nodeID, safeFrame)
+			fmt.Fprintf(&mermaid, "    %s[\"%s\"]\n", nodeID, nodeLabel)
 			fmt.Fprintf(&mermaid, "    style %s fill:#d32f2f,color:#fff\n", nodeID)
 		}
 		mermaid.WriteString(mermaidClickDirective(nodeID, frame, false))
@@ -674,7 +682,28 @@ func buildCallPathMermaid(row combinedRow, reachDisplay string) string {
 		reachDisplay, strings.ReplaceAll(mermaid.String(), `"`, `&quot;`), mermaid.String())
 }
 
-var mermaidFileRe = regexp.MustCompile(`\(([^)]+\.go(?::\d+)?)\)`)
+func buildMermaidNodeLabel(frame, repoURL string) string {
+	safeFrame := strings.ReplaceAll(frame, `"`, "'")
+	m := mermaidFileRe.FindStringSubmatch(frame)
+	if m == nil {
+		return safeFrame
+	}
+	_, _, sha := splitFileLineBlame(m[1])
+	if sha == "" {
+		return safeFrame
+	}
+	cleanFrame := strings.Replace(safeFrame, "@"+sha, "", 1)
+	commitURL := ""
+	if repoURL != "" {
+		commitURL = repoURL + "/commit/" + sha
+	}
+	if commitURL != "" {
+		return cleanFrame + "<br/><a href='" + commitURL + "' style='font-size:10px;color:#0366d6'>" + sha + "</a>"
+	}
+	return cleanFrame + "<br/><span style='font-size:10px;color:#586069'>" + sha + "</span>"
+}
+
+var mermaidFileRe = regexp.MustCompile(`\(([^)]+\.go(?::\d+)?(?:@[a-f0-9]+)?)\)`)
 
 func mermaidClickDirective(nodeID, frame string, isImportChain bool) string {
 	if isImportChain {
@@ -749,11 +778,21 @@ func mermaidClickForCallPath(nodeID, frame string) string {
 	return ""
 }
 
-func splitFileLine(s string) (string, string) {
-	if i := strings.LastIndex(s, ":"); i > 0 && i < len(s)-1 {
-		return s[:i], s[i+1:]
+func splitFileLineBlame(s string) (string, string, string) {
+	sha := ""
+	if at := strings.LastIndex(s, "@"); at > 0 {
+		sha = s[at+1:]
+		s = s[:at]
 	}
-	return s, ""
+	if i := strings.LastIndex(s, ":"); i > 0 && i < len(s)-1 {
+		return s[:i], s[i+1:], sha
+	}
+	return s, "", sha
+}
+
+func splitFileLine(s string) (string, string) {
+	f, l, _ := splitFileLineBlame(s)
+	return f, l
 }
 
 func isVendoredPath(filename string) bool {
