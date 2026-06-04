@@ -1264,21 +1264,38 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	}
 
 	total := len(grouped)
+	actionSummary := map[string]int{}
+	for _, r := range rendered {
+		switch {
+		case strings.Contains(r.action, "Fix"):
+			actionSummary["fix"]++
+		case strings.Contains(r.action, "Blocked"):
+			actionSummary["blocked"]++
+		case strings.Contains(r.action, "Skip"):
+			actionSummary["skip"]++
+		case strings.Contains(r.action, "No action"), strings.Contains(r.action, "Affected"):
+			actionSummary["safe"]++
+		case strings.Contains(r.action, "Manual"):
+			actionSummary["manual"]++
+		default:
+			actionSummary["other"]++
+		}
+	}
 	var parts []string
-	if n := counts[types.FixableNow]; n > 0 {
+	if n := actionSummary["fix"]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d fixable", n))
 	}
-	if n := counts[types.BlockedByGo]; n > 0 {
+	if n := actionSummary["blocked"]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d blocked", n))
 	}
-	if n := counts[types.NotReachable]; n > 0 {
-		parts = append(parts, fmt.Sprintf("%d not-reachable", n))
+	if n := actionSummary["skip"]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d skip", n))
 	}
-	if n := counts[types.Unknown]; n > 0 {
-		parts = append(parts, fmt.Sprintf("%d unknown", n))
+	if n := actionSummary["safe"]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d safe", n))
 	}
-	if n := counts[types.Misassigned]; n > 0 {
-		parts = append(parts, fmt.Sprintf("%d misassigned", n))
+	if n := actionSummary["manual"]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d manual", n))
 	}
 	if len(errors) > 0 {
 		parts = append(parts, fmt.Sprintf("%d errors", len(errors)))
