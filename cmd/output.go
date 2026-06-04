@@ -591,7 +591,17 @@ func printHTMLTableRow(gr groupedRow, latestVersion string, cveVersions map[stri
 		cveCell = fmt.Sprintf(`<a href="%s">%s</a>`, row.cveURL, row.cveID)
 	}
 	actionCell := htmlAction(row, latestVersion, cveVersions)
-	severityCell := fmt.Sprintf(`<span class="tag" style="background:%s">%s (%.1f)</span>`, htmlPrioColor(row.priority), shortPriority(row.priority), row.cvss)
+	severityTooltip := fmt.Sprintf("CVSS %.1f from CVE.org/NVD. Priority: %s", row.cvss, shortPriority(row.priority))
+	if row.cvss >= 9.0 {
+		severityTooltip += " — easily exploitable, system compromise risk"
+	} else if row.cvss >= 7.0 {
+		severityTooltip += " — privilege escalation or DoS risk"
+	} else if row.cvss >= 4.0 {
+		severityTooltip += " — conditional exploitation under certain configs"
+	} else {
+		severityTooltip += " — unlikely exploitation, minimal impact"
+	}
+	severityCell := fmt.Sprintf(`<span class="tag" style="background:%s" title="%s">%s (%.1f)</span>`, htmlPrioColor(row.priority), severityTooltip, shortPriority(row.priority), row.cvss)
 
 	reachDisplay := buildReachDisplay(row)
 	reachCell := buildReachCell(row, reachDisplay)
@@ -601,7 +611,13 @@ func printHTMLTableRow(gr groupedRow, latestVersion string, cveVersions map[stri
 		dueCell = "—"
 	} else if row.slaStatus != "" {
 		dueColor := htmlSLAColor(row.slaStatus)
-		dueCell = fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, dueColor, row.slaDueDate)
+		dueTooltip := fmt.Sprintf("SLA due: %s. Status: %s", row.slaDueDate, row.slaStatus)
+		if row.ticket != "-- none --" && row.ticket != "" && row.ticket != "—" {
+			dueTooltip += " (Dependent Due Date from Jira tracker creation)"
+		} else {
+			dueTooltip += " (SLA Date from CVE public date)"
+		}
+		dueCell = fmt.Sprintf(`<span class="tag" style="background:%s" title="%s">%s</span>`, dueColor, dueTooltip, row.slaDueDate)
 	}
 
 	versionAttr := row.version

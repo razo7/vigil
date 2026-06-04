@@ -176,7 +176,28 @@ func runDiscoverOnly() error {
 	return nil
 }
 
+func normalizeGoVersion(v string) string {
+	if v == "" {
+		return v
+	}
+	v = strings.TrimPrefix(v, "go")
+	parts := strings.Split(v, ".")
+	switch len(parts) {
+	case 2:
+		fmt.Fprintf(os.Stderr, "WARNING: --go-version %s treated as %s.0 (expected x.y.z format)\n", v, v)
+		return v + ".0"
+	case 1:
+		fmt.Fprintf(os.Stderr, "WARNING: --go-version %s treated as %s.0.0 (expected x.y.z format)\n", v, v)
+		return v + ".0.0"
+	default:
+		return v
+	}
+}
+
 func runCombinedScan() error {
+	if scanGoVersion != "" {
+		scanGoVersion = normalizeGoVersion(scanGoVersion)
+	}
 	jql := scanJQL
 	if jql == "" {
 		key := strings.ToLower(scanComponent)
@@ -1154,7 +1175,14 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		case row.reachability == "MODULE-LEVEL":
 			reachDisplay = "MODULE-LEVEL (go.mod only)"
 		case row.reachability == "PACKAGE-LEVEL" && row.importChain != "":
-			reachDisplay = fmt.Sprintf("PACKAGE-LEVEL (%s)", row.importChain)
+			chain := row.importChain
+			if len(chain) > 60 {
+				parts := strings.Split(chain, " → ")
+				if len(parts) > 3 {
+					chain = parts[0] + " → ... → " + parts[len(parts)-1]
+				}
+			}
+			reachDisplay = fmt.Sprintf("PACKAGE-LEVEL (%s)", chain)
 		default:
 			if ep := entryPointFile(row.callPaths); ep != "" {
 				label := row.reachability
@@ -1177,6 +1205,13 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			slaDue = "—"
 		}
 
+		actionText := buildAction(row, latestVer, cveVersions)
+		if len(gr.subRows) > 1 && row.classification == types.FixableNow {
+			if perVersion := buildPerVersionAction(gr.subRows, latestVer, cveVersions); perVersion != "" {
+				actionText = perVersion
+			}
+		}
+
 		rendered = append(rendered, renderedRow{
 			cveID:          row.cveID,
 			cveURL:         row.cveURL,
@@ -1184,7 +1219,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 			reach:          reachDisplay,
 			pkg:            pkgDisplay,
 			version:        row.version,
-			action:         buildAction(row, latestVer, cveVersions),
+			action:         actionText,
 			ticket:         ticketWithStatus,
 			ticketURL:      row.ticketURL,
 			slaDue:         slaDue,
@@ -1479,6 +1514,45 @@ func buildAction(row combinedRow, latestVer string, cveVersions map[string][]str
 	default:
 		return "❓ Manual review"
 	}
+}
+
+func buildPerVersionAction(subRows []combinedRow, latestVer string, cveVersions map[string][]string) string {
+	type versionFix struct {
+		version, currentGo, fixVersion string
+	}
+	seen := map[string]bool{}
+	var fixes []versionFix
+	for _, r := range subRows {
+		if seen[r.version] || r.version == "main" {
+			continue
+		}
+		seen[r.version] = true
+		if r.currentGo != "" && r.fixVersion != "" {
+			fixes = append(fixes, versionFix{r.version, r.currentGo, r.fixVersion})
+		}
+	}
+	if len(fixes) <= 1 {
+		return ""
+	}
+	allSameGo := true
+	for i := 1; i < len(fixes); i++ {
+		if fixes[i].currentGo != fixes[0].currentGo {
+			allSameGo = false
+			break
+		}
+	}
+	if allSameGo {
+		return ""
+	}
+	var parts []string
+	for _, f := range fixes {
+		if isStdlibPackage(subRows[0].pkg) {
+			parts = append(parts, fmt.Sprintf("%s (Go %s→%s)", f.version, f.currentGo, f.fixVersion))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s (%s→%s)", f.version, f.currentGo, f.fixVersion))
+		}
+	}
+	return "\U0001F534\U0001F527 Fix on " + strings.Join(parts, ", ")
 }
 
 func isStdlibPackage(pkg string) bool {
@@ -1853,6 +1927,9 @@ func entryPointFile(callPaths []string) string {
 			continue
 		}
 		filename := parts[i][start+1 : end]
+		if at := strings.LastIndex(filename, "@"); at > 0 {
+			filename = filename[:at]
+		}
 		if strings.Contains(filename, "/") {
 			base := filename[strings.LastIndex(filename, "/")+1:]
 			if !strings.HasSuffix(base, ".go") {
