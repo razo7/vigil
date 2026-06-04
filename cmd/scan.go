@@ -1469,11 +1469,11 @@ func buildAction(row combinedRow, latestVer string, cveVersions map[string][]str
 		return "\U0001F7E2 No action"
 	case types.BlockedByGo:
 		if row.fixVersion != "" && row.currentGo != "" {
-			return fmt.Sprintf("\U0001F7E0⏳ Blocked (Go %s → %s)", row.currentGo, row.fixVersion)
+			return fmt.Sprintf("\U0001F7E0⏳ Blocked — base image has Go %s, fix needs %s", row.currentGo, row.fixVersion)
 		} else if row.fixVersion != "" {
-			return fmt.Sprintf("\U0001F7E0⏳ Blocked (needs Go %s)", row.fixVersion)
+			return fmt.Sprintf("\U0001F7E0⏳ Blocked — fix needs Go %s", row.fixVersion)
 		}
-		return "\U0001F7E0⏳ Blocked"
+		return "\U0001F7E0⏳ Blocked — waiting for Go bump in base image"
 	case types.FixableNow:
 		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion, row.currentGo, row.pkg, row.installedVersion)
 	default:
