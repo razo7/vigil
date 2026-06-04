@@ -537,46 +537,14 @@ func runCombinedScan() error {
 	}
 	for i := range discoveredGaps {
 		if discoveredGaps[i].Severity == 0 && len(discoveredGaps[i].CVEIDs) > 0 {
-			cveID := ""
-			for _, id := range discoveredGaps[i].CVEIDs {
-				if strings.HasPrefix(id, "CVE-") {
-					cveID = id
-					break
-				}
-			}
-			if cveID == "" {
-				continue
-			}
-			if info, err := cve.FetchCVSSScore(cveID); err == nil && info != nil {
-				discoveredGaps[i].Severity = info.Score
-				discoveredGaps[i].SeverityLabel = info.Severity
-				if discoveredGaps[i].CVEPublished == "" && info.Published != "" {
-					discoveredGaps[i].CVEPublished = info.Published
-				}
-				cvssCount++
-			}
+			enrichDiscoveredVuln(&discoveredGaps[i])
+			cvssCount++
 		}
 	}
 	for i := range trivyVulns {
 		if trivyVulns[i].Severity == 0 && len(trivyVulns[i].CVEIDs) > 0 {
-			cveID := ""
-			for _, id := range trivyVulns[i].CVEIDs {
-				if strings.HasPrefix(id, "CVE-") {
-					cveID = id
-					break
-				}
-			}
-			if cveID == "" {
-				continue
-			}
-			if info, err := cve.FetchCVSSScore(cveID); err == nil && info != nil {
-				trivyVulns[i].Severity = info.Score
-				trivyVulns[i].SeverityLabel = info.Severity
-				if trivyVulns[i].CVEPublished == "" && info.Published != "" {
-					trivyVulns[i].CVEPublished = info.Published
-				}
-				cvssCount++
-			}
+			enrichDiscoveredVuln(&trivyVulns[i])
+			cvssCount++
 		}
 	}
 	if cvssCount > 0 {
@@ -1322,6 +1290,47 @@ func statusRank(status string) int {
 		return 9
 	default:
 		return 8
+	}
+}
+
+func enrichDiscoveredVuln(v *types.DiscoveredVuln) {
+	id := ""
+	for _, candidate := range v.CVEIDs {
+		if strings.HasPrefix(candidate, "CVE-") {
+			id = candidate
+			break
+		}
+	}
+	if id == "" && len(v.CVEIDs) > 0 {
+		id = v.CVEIDs[0]
+	}
+	if id == "" {
+		return
+	}
+	info, err := cve.FetchWithFallback(id)
+	if err != nil || info == nil {
+		return
+	}
+	if info.Score > 0 {
+		v.Severity = info.Score
+	}
+	if info.Severity != "" {
+		v.SeverityLabel = info.Severity
+	}
+	if v.CVEPublished == "" && info.Published != "" {
+		v.CVEPublished = info.Published
+	}
+	if info.CVEID != "" {
+		hasCVE := false
+		for _, existing := range v.CVEIDs {
+			if existing == info.CVEID {
+				hasCVE = true
+				break
+			}
+		}
+		if !hasCVE {
+			v.CVEIDs = append([]string{info.CVEID}, v.CVEIDs...)
+		}
 	}
 }
 

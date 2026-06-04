@@ -16,6 +16,7 @@ type CVEInfo struct {
 	CWEDescription string
 	References     []string
 	Published      string
+	CVEID          string
 }
 
 func FetchCVSSScore(cveID string) (*CVEInfo, error) {
@@ -142,6 +143,112 @@ func extractCVSSFromADP(containers map[string]interface{}) *CVEInfo {
 		}
 	}
 	return nil
+}
+
+func FetchGHSA(ghsaID string) (*CVEInfo, error) {
+	url := fmt.Sprintf("https://api.github.com/advisories/%s", ghsaID)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API returned %d for %s", resp.StatusCode, ghsaID)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	info := &CVEInfo{}
+	if cvss, _ := raw["cvss"].(map[string]interface{}); cvss != nil {
+		if score, ok := cvss["score"].(float64); ok {
+			info.Score = score
+		}
+	}
+	if sev, _ := raw["severity"].(string); sev != "" {
+		info.Severity = strings.ToUpper(sev)
+	}
+	if cveID, _ := raw["cve_id"].(string); cveID != "" {
+		info.CVEID = cveID
+	}
+	if pub, _ := raw["published_at"].(string); pub != "" && len(pub) >= 10 {
+		info.Published = pub[:10]
+	}
+	if desc, _ := raw["summary"].(string); desc != "" {
+		info.Description = desc
+	}
+	return info, nil
+}
+
+func FetchWithFallback(id string) (*CVEInfo, error) {
+	if strings.HasPrefix(id, "CVE-") {
+		info, err := FetchCVSSScore(id)
+		if err == nil && info != nil && info.Score > 0 {
+			return info, nil
+		}
+		ghsa, ghsaErr := fetchGHSAByCVE(id)
+		if ghsaErr == nil && ghsa != nil && (ghsa.Score > 0 || ghsa.Severity != "") {
+			if info != nil {
+				if ghsa.Score > 0 {
+					info.Score = ghsa.Score
+				}
+				if ghsa.Severity != "" && info.Severity == "" {
+					info.Severity = ghsa.Severity
+				}
+				if ghsa.Published != "" && info.Published == "" {
+					info.Published = ghsa.Published
+				}
+				return info, nil
+			}
+			return ghsa, nil
+		}
+		return info, err
+	}
+	if strings.HasPrefix(id, "GHSA-") {
+		return FetchGHSA(id)
+	}
+	return nil, fmt.Errorf("unknown ID format: %s", id)
+}
+
+func fetchGHSAByCVE(cveID string) (*CVEInfo, error) {
+	url := fmt.Sprintf("https://api.github.com/advisories?cve_id=%s", cveID)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var advisories []map[string]interface{}
+	if err := json.Unmarshal(body, &advisories); err != nil {
+		return nil, err
+	}
+	if len(advisories) == 0 {
+		return nil, nil
+	}
+	a := advisories[0]
+	info := &CVEInfo{}
+	if cvss, _ := a["cvss"].(map[string]interface{}); cvss != nil {
+		if score, ok := cvss["score"].(float64); ok {
+			info.Score = score
+		}
+	}
+	if sev, _ := a["severity"].(string); sev != "" {
+		info.Severity = strings.ToUpper(sev)
+	}
+	if pub, _ := a["published_at"].(string); pub != "" && len(pub) >= 10 {
+		info.Published = pub[:10]
+	}
+	return info, nil
 }
 
 func extractFromMetrics(metrics []interface{}) *CVEInfo {

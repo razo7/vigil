@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,16 +154,15 @@ func ensureGoToolchain(version string) error {
 	url := fmt.Sprintf("https://go.dev/dl/%s", tarball)
 
 	tmpFile := filepath.Join(os.TempDir(), tarball)
-	cmd := exec.Command("curl", "-fsSL", "-o", tmpFile, url)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("downloading %s: %s: %w", url, strings.TrimSpace(string(out)), err)
+	if err := downloadFile(url, tmpFile); err != nil {
+		return fmt.Errorf("downloading %s: %w", url, err)
 	}
 	defer os.Remove(tmpFile)
 
 	extractDir := filepath.Join(cacheDir, "go-"+normalized)
 	os.MkdirAll(extractDir, 0755)
-	cmd = exec.Command("tar", "xzf", tmpFile, "-C", extractDir, "--strip-components=1")
-	if out, err := cmd.CombinedOutput(); err != nil {
+	tarCmd := exec.Command("tar", "xzf", tmpFile, "-C", extractDir, "--strip-components=1")
+	if out, err := tarCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("extracting: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
@@ -434,6 +434,24 @@ func gitBlame(repoPath, filePath, line string) string {
 		return sha[:7]
 	}
 	return ""
+}
+
+func downloadFile(url, dest string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, resp.Body)
+	return err
 }
 
 func buildRepoRelativePath(filename, module, ownModule string) string {
