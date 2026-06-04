@@ -41,6 +41,7 @@ var (
 	scanFormat        string
 	scanDetectOnly    bool
 	scanVerbose       bool
+	scanBlame         bool
 )
 
 func loadComponentMap() map[string]string {
@@ -249,6 +250,7 @@ func runCombinedScan() error {
 			RepoPath:            scanRepoPath,
 			Commit:              scanCommit,
 			DownstreamGoVersion: scanGoVersion,
+			Blame:               scanBlame,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
@@ -315,6 +317,7 @@ func runCombinedScan() error {
 		Since:        scanSince,
 		ComponentMap: loadComponentMap(),
 		ProjectJQL:   getConfig().Jira.ProjectJQL(),
+		Blame:        scanBlame,
 	})
 
 	operatorName := assess.DeriveOperatorName(loadComponentMap()[strings.ToLower(scanComponent)])
@@ -345,7 +348,13 @@ func runCombinedScan() error {
 				cleanup()
 				continue
 			}
-			branchResult, branchErr := goversion.RunGovulncheckWithVersion(wt, goMod.EffectiveVersion())
+			var branchResult *goversion.VulncheckResult
+			var branchErr error
+			if scanBlame {
+				branchResult, branchErr = goversion.RunGovulncheckWithBlame(wt, goMod.EffectiveVersion())
+			} else {
+				branchResult, branchErr = goversion.RunGovulncheckWithVersion(wt, goMod.EffectiveVersion())
+			}
 
 			if scanTrivy {
 				trivyReport, trivyErr := trivy.Run(wt)
@@ -525,7 +534,21 @@ func runCombinedScan() error {
 	}
 
 	if scanFormat == "html" {
-		printHTMLTable(results, discoveredGaps, discResult, trivyVulns, scanVerbose)
+		if term.IsTerminal(int(os.Stdout.Fd())) {
+			filename := fmt.Sprintf("vigil-%s-%s.html", strings.ToLower(scanComponent), time.Now().Format("2006-01-02"))
+			f, err := os.Create(filename)
+			if err != nil {
+				return fmt.Errorf("creating report file: %w", err)
+			}
+			origStdout := os.Stdout
+			os.Stdout = f
+			printHTMLTable(results, discoveredGaps, discResult, trivyVulns, scanVerbose)
+			os.Stdout = origStdout
+			f.Close()
+			fmt.Fprintf(os.Stderr, "Report written to %s\n", filename)
+		} else {
+			printHTMLTable(results, discoveredGaps, discResult, trivyVulns, scanVerbose)
+		}
 	} else if scanShort {
 		printCombinedTable(results, discoveredGaps, discResult, trivyVulns, errors)
 	} else {
@@ -565,10 +588,27 @@ func buildJiraCVESet(results []*types.Result) map[string]bool {
 	return m
 }
 
+func preferCVEIDs(ids []string) []string {
+	var cves, others []string
+	for _, id := range ids {
+		if strings.HasPrefix(id, "CVE-") {
+			cves = append(cves, id)
+		} else {
+			others = append(others, id)
+		}
+	}
+	return append(cves, others...)
+}
+
 func cveOrgURL(cveIDs []string) string {
 	for _, id := range cveIDs {
 		if strings.HasPrefix(id, "CVE-") {
 			return fmt.Sprintf("https://www.cve.org/CVERecord?id=%s", id)
+		}
+	}
+	for _, id := range cveIDs {
+		if strings.HasPrefix(id, "GHSA-") {
+			return fmt.Sprintf("https://github.com/advisories/%s", id)
 		}
 	}
 	return ""
@@ -655,7 +695,7 @@ func printDiscoverTable(disc *types.DiscoverResult) {
 		rows = append(rows, discRow{
 			src:      src,
 			ticket:   ticket,
-			cve:      formatCVEAliases(v.CVEIDs, 0),
+			cve:      formatCVEAliases(preferCVEIDs(v.CVEIDs), 0),
 			class:    string(v.Classification),
 			priority: shortPriority(v.Priority),
 			pkg:      shortPackage(v.Package),
@@ -841,11 +881,12 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 		if gapVersion == "" {
 			gapVersion = "main"
 		}
+		sortedIDs := preferCVEIDs(v.CVEIDs)
 		rows = append(rows, combinedRow{
 			src:            compositeSource("G", false, gapInTrivy),
 			ticket:         "-- none --",
-			cveID:          formatCVEAliases(v.CVEIDs, 0),
-			cveURL:         cveOrgURL(v.CVEIDs),
+			cveID:          formatCVEAliases(sortedIDs, 0),
+			cveURL:         cveOrgURL(sortedIDs),
 			version:        gapVersion,
 			lang:           "Go",
 			langSrc:        "gvc",
@@ -863,11 +904,12 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 		})
 	}
 	for _, v := range trivyVulns {
+		trivySortedIDs := preferCVEIDs(v.CVEIDs)
 		rows = append(rows, combinedRow{
 			src:            "Trivy",
 			ticket:         "-- none --",
-			cveID:          formatCVEAliases(v.CVEIDs, 0),
-			cveURL:         cveOrgURL(v.CVEIDs),
+			cveID:          formatCVEAliases(trivySortedIDs, 0),
+			cveURL:         cveOrgURL(trivySortedIDs),
 			version:        "main",
 			lang:           "Go",
 			langSrc:        "trivy",
@@ -1042,7 +1084,7 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	}
 
 	var summary []string
-	summary = append(summary, fmt.Sprintf("%d assessed", len(results)))
+	summary = append(summary, fmt.Sprintf("%d Jira tickets", len(results)))
 	if n := counts[types.FixableNow]; n > 0 {
 		summary = append(summary, fmt.Sprintf("%d fixable", n))
 	}
@@ -1152,13 +1194,17 @@ func buildAction(row combinedRow, latestVer string, cveVersions map[string][]str
 	case types.BlockedByGo:
 		return "\U0001F7E0⏳ Blocked"
 	case types.FixableNow:
-		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion, row.currentGo)
+		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion, row.currentGo, row.pkg)
 	default:
 		return "❓ Manual review"
 	}
 }
 
-func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string, cvss float64, fixVersion, currentGo string) string {
+func isStdlibPackage(pkg string) bool {
+	return pkg != "" && !strings.Contains(pkg, ".")
+}
+
+func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string, cvss float64, fixVersion, currentGo, pkg string) string {
 	isQualified := cvss >= 7.0
 
 	operatorName := ""
@@ -1202,10 +1248,18 @@ func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]s
 
 	fixHint := ""
 	if fixVersion != "" {
-		if currentGo != "" {
-			fixHint = " (" + currentGo + " → " + fixVersion + ")"
+		if isStdlibPackage(pkg) {
+			if currentGo != "" {
+				fixHint = " (Go " + currentGo + " → " + fixVersion + ")"
+			} else {
+				fixHint = " (Go → " + fixVersion + ")"
+			}
 		} else {
-			fixHint = " (→ " + fixVersion + ")"
+			shortPkg := pkg
+			if i := strings.LastIndex(pkg, "/"); i >= 0 {
+				shortPkg = pkg[i+1:]
+			}
+			fixHint = " (" + shortPkg + " → " + fixVersion + ")"
 		}
 	}
 
@@ -1620,5 +1674,6 @@ func init() {
 	scanCmd.Flags().StringVar(&scanFormat, "format", "", "Output format: html (writes colored HTML table to stdout)")
 	scanCmd.Flags().BoolVar(&scanDetectOnly, "detect-only", false, "Output JSON findings without fix or display")
 	scanCmd.Flags().BoolVar(&scanVerbose, "verbose", false, "Include verbose details in HTML output (call-path diagrams)")
+	scanCmd.Flags().BoolVar(&scanBlame, "blame", false, "Annotate call paths with git blame commit SHAs (adds latency)")
 	rootCmd.AddCommand(scanCmd)
 }

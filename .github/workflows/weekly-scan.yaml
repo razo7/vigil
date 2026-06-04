@@ -83,7 +83,7 @@ jobs:
           docker run --rm \
             -e JIRA_API_TOKEN \
             -e JIRA_EMAIL \
-            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --format html --verbose --go-version "$GO_VERSION" \
+            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --format html --verbose --blame --go-version "$GO_VERSION" \
             > ${{ matrix.component }}-report.html 2>${{ matrix.component }}-html-stderr.txt || true
 
       - name: Post summary
@@ -248,7 +248,7 @@ jobs:
           echo "<li>🔴 <strong>${t_fix} require action</strong> — fixes available and deployable</li>" >> consolidated-report.html
           echo "<li>🟢 <strong>${t_nr} are safe</strong> — vulnerable code is not reachable in our operators</li>" >> consolidated-report.html
           if [ "$t_disc" -gt 0 ]; then
-            echo "<li>🟠 <strong>${t_disc} new CVEs discovered</strong> by govulncheck/Trivy with no Jira ticket — need tickets created</li>" >> consolidated-report.html
+            echo "<li>🟠 <strong>${t_disc} new CVEs discovered</strong> by govulncheck/Trivy with no Jira ticket</li>" >> consolidated-report.html
           fi
           if [ "$t_errs" -gt 0 ]; then
             echo "<li>⚠️ <strong>${t_errs} errors</strong> during scanning (Jira rate limiting or toolchain issues)</li>" >> consolidated-report.html
