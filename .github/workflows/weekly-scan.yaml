@@ -206,7 +206,12 @@ jobs:
           done
           echo '</div>' >> consolidated-report.html
 
-          echo "<p><strong>Total:</strong> ${total_fixable} fixable across $(ls *-scan.txt | wc -l) components (${total_assessed} Jira tickets)</p>" >> consolidated-report.html
+          total_cves=0
+          for f in *-scan.txt; do
+            tc=$(tail -1 "$f" | grep -oP '^\d+' || echo 0)
+            total_cves=$((total_cves + tc))
+          done
+          echo "<p><strong>Total:</strong> ${total_cves} CVEs, ${total_fixable} fixable across $(ls *-scan.txt | wc -l) components</p>" >> consolidated-report.html
 
           # Tabs
           echo '<div class="tabs">' >> consolidated-report.html
@@ -220,66 +225,67 @@ jobs:
           # ALL tab — executive summary + dashboard
           echo '<div id="tab-ALL" class="tab-content active">' >> consolidated-report.html
 
-          # Parse totals
-          t_assessed=0; t_fix=0; t_nr=0; t_disc=0; t_errs=0
+          # Parse totals from new summary format: "N CVEs: X fixable, Y not-reachable (M Jira, K discovered)"
+          t_total=0; t_fix=0; t_nr=0; t_jira=0; t_disc=0; t_errs=0
           num_comps=0
           for f in *-scan.txt; do
             S=$(tail -1 "$f")
-            assessed=$(echo "$S" | grep -oP '\d+(?= Jira)' || echo 0)
+            total_cves=$(echo "$S" | grep -oP '^\d+' || echo 0)
             fix=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
             nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
+            jira=$(echo "$S" | grep -oP '\d+(?= Jira)' || echo 0)
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)
             errs=$(echo "$S" | grep -oP '\d+(?= errors)' || echo 0)
-            t_assessed=$((t_assessed + assessed))
+            t_total=$((t_total + total_cves))
             t_fix=$((t_fix + fix)); t_nr=$((t_nr + nr))
-            t_disc=$((t_disc + disc)); t_errs=$((t_errs + errs))
+            t_jira=$((t_jira + jira)); t_disc=$((t_disc + disc))
+            t_errs=$((t_errs + errs))
             num_comps=$((num_comps + 1))
           done
-          total=$((t_fix + t_nr + t_disc))
+          t_skip=$((t_total - t_fix - t_nr))
+          [ "$t_skip" -lt 0 ] && t_skip=0
 
           # Executive summary
           echo '<div style="background:#fff;border:1px solid #e1e4e8;border-radius:8px;padding:20px;margin:16px 0">' >> consolidated-report.html
           echo '<h2 style="margin-top:0">Executive Summary</h2>' >> consolidated-report.html
           echo "<p style='font-size:15px;line-height:1.6'>" >> consolidated-report.html
-          echo "Vigil scanned <strong>${num_comps} components</strong> across all supported release branches." >> consolidated-report.html
-          echo "From <strong>${t_assessed} Jira tickets</strong> and <strong>${t_disc} discovered CVEs</strong>:" >> consolidated-report.html
+          echo "Vigil scanned <strong>${num_comps} components</strong> across all supported release branches and found <strong>${t_total} unique CVEs</strong> (${t_jira} from Jira tickets, ${t_disc} discovered by govulncheck)." >> consolidated-report.html
           echo "</p>" >> consolidated-report.html
           echo '<ul style="font-size:15px;line-height:1.8">' >> consolidated-report.html
-          echo "<li>🔴 <strong>${t_fix} require action</strong> — fixes available and deployable</li>" >> consolidated-report.html
-          echo "<li>🟢 <strong>${t_nr} are safe</strong> — vulnerable code is not reachable in our operators</li>" >> consolidated-report.html
-          if [ "$t_disc" -gt 0 ]; then
-            echo "<li>🟠 <strong>${t_disc} new CVEs discovered</strong> by govulncheck/Trivy with no Jira ticket</li>" >> consolidated-report.html
+          echo "<li>🔴 <strong>${t_fix} fixable</strong> — fixes available and deployable</li>" >> consolidated-report.html
+          echo "<li>🟢 <strong>${t_nr} safe</strong> — vulnerable code is not reachable</li>" >> consolidated-report.html
+          if [ "$t_skip" -gt 0 ]; then
+            echo "<li>🟡 <strong>${t_skip} skipped or no action</strong> — lifecycle-unqualified or module-level only</li>" >> consolidated-report.html
           fi
           if [ "$t_errs" -gt 0 ]; then
-            echo "<li>⚠️ <strong>${t_errs} errors</strong> during scanning (Jira rate limiting or toolchain issues)</li>" >> consolidated-report.html
+            echo "<li>⚠️ <strong>${t_errs} errors</strong> during scanning</li>" >> consolidated-report.html
           fi
           echo '</ul>' >> consolidated-report.html
 
           # Bottom line
           if [ "$t_fix" -gt 0 ]; then
             echo "<p style='font-size:15px;padding:12px;background:#fff3f3;border-left:4px solid #d32f2f;border-radius:4px'>" >> consolidated-report.html
-            echo "<strong>Action required:</strong> ${t_fix} CVEs need fixes across ${num_comps} components. Click a component below for details." >> consolidated-report.html
+            echo "<strong>Action required:</strong> ${t_fix} CVEs need fixes across ${num_comps} components. Click a component tab for details." >> consolidated-report.html
             echo "</p>" >> consolidated-report.html
           else
             echo "<p style='font-size:15px;padding:12px;background:#f0fff0;border-left:4px solid #388e3c;border-radius:4px'>" >> consolidated-report.html
-            echo "<strong>All clear:</strong> No fixable CVEs found. All vulnerabilities are either not reachable or already addressed." >> consolidated-report.html
-            echo "</p>" >> consolidated-report.html
+            echo "<strong>All clear:</strong> No fixable CVEs found.</p>" >> consolidated-report.html
           fi
           echo '</div>' >> consolidated-report.html
 
           # Donut chart + component breakdown
           echo '<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;margin:16px 0">' >> consolidated-report.html
 
-          # SVG donut
+          # SVG donut — action-based categories
           echo '<div style="text-align:center">' >> consolidated-report.html
           echo '<svg viewBox="0 0 200 200" width="180" height="180">' >> consolidated-report.html
-          if [ "$total" -gt 0 ]; then
+          if [ "$t_total" -gt 0 ]; then
             ang=-90
-            for slice in "Fixable:$t_fix:#d32f2f" "Not Reachable:$t_nr:#388e3c" "Discovered:$t_disc:#f57c00"; do
+            for slice in "Fix:$t_fix:#d32f2f" "Safe:$t_nr:#2e7d32" "Skip/Other:$t_skip:#ffb300"; do
               count=$(echo "$slice" | cut -d: -f2)
               color=$(echo "$slice" | cut -d: -f3)
               [ "$count" -eq 0 ] && continue
-              pct=$(echo "scale=4; $count / $total" | bc)
+              pct=$(echo "scale=4; $count / $t_total" | bc)
               end=$(echo "scale=4; $ang + $pct * 360" | bc)
               x1=$(echo "scale=4; 100 + 80 * c($ang * 3.14159/180)" | bc -l)
               y1=$(echo "scale=4; 100 + 80 * s($ang * 3.14159/180)" | bc -l)
@@ -290,29 +296,29 @@ jobs:
               ang=$end
             done
             echo '<circle cx="100" cy="100" r="45" fill="#fff"/>' >> consolidated-report.html
-            echo "<text x=\"100\" y=\"105\" text-anchor=\"middle\" font-size=\"22\" font-weight=\"bold\">${total}</text>" >> consolidated-report.html
+            echo "<text x=\"100\" y=\"105\" text-anchor=\"middle\" font-size=\"22\" font-weight=\"bold\">${t_total}</text>" >> consolidated-report.html
           fi
           echo '</svg>' >> consolidated-report.html
           echo "<div style='font-size:12px;color:#586069;margin-top:4px'>Total CVEs</div>" >> consolidated-report.html
           echo "<div style='margin-top:8px'>" >> consolidated-report.html
-          echo "<span style='display:inline-block;width:10px;height:10px;background:#d32f2f;border-radius:50%'></span> Fixable ${t_fix} &nbsp;" >> consolidated-report.html
-          echo "<span style='display:inline-block;width:10px;height:10px;background:#388e3c;border-radius:50%'></span> Safe ${t_nr} &nbsp;" >> consolidated-report.html
-          echo "<span style='display:inline-block;width:10px;height:10px;background:#f57c00;border-radius:50%'></span> New ${t_disc}" >> consolidated-report.html
+          echo "<span style='display:inline-block;width:10px;height:10px;background:#d32f2f;border-radius:50%'></span> Fix ${t_fix} &nbsp;" >> consolidated-report.html
+          echo "<span style='display:inline-block;width:10px;height:10px;background:#2e7d32;border-radius:50%'></span> Safe ${t_nr} &nbsp;" >> consolidated-report.html
+          echo "<span style='display:inline-block;width:10px;height:10px;background:#ffb300;border-radius:50%'></span> Skip ${t_skip}" >> consolidated-report.html
           echo '</div></div>' >> consolidated-report.html
 
           # Component breakdown table
           echo '<div style="flex:1;min-width:300px">' >> consolidated-report.html
           echo '<h3 style="margin-top:0">Component Breakdown</h3>' >> consolidated-report.html
-          echo '<table><thead><tr><th>Component</th><th>Jira</th><th>🔴 Fix</th><th>🟢 Safe</th><th>🟠 New</th><th>Errors</th></tr></thead><tbody>' >> consolidated-report.html
+          echo '<table><thead><tr><th>Component</th><th>Total</th><th>🔴 Fix</th><th>🟢 Safe</th><th>Jira</th><th>Discovered</th></tr></thead><tbody>' >> consolidated-report.html
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
             S=$(tail -1 "$f")
-            assessed=$(echo "$S" | grep -oP '\d+(?= Jira)' || echo 0)
+            total_cves=$(echo "$S" | grep -oP '^\d+' || echo 0)
             fixable=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
             nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
+            jira=$(echo "$S" | grep -oP '\d+(?= Jira)' || echo 0)
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)
-            errs=$(echo "$S" | grep -oP '\d+(?= errors)' || echo 0)
-            echo "<tr onclick=\"showTab('${COMP}')\" style='cursor:pointer'><td><strong>${COMP}</strong></td><td>${assessed}</td><td style='color:#d32f2f;font-weight:600'>${fixable}</td><td style='color:#388e3c'>${nr}</td><td style='color:#f57c00'>${disc}</td><td>${errs}</td></tr>" >> consolidated-report.html
+            echo "<tr onclick=\"showTab('${COMP}')\" style='cursor:pointer'><td><strong>${COMP}</strong></td><td>${total_cves}</td><td style='color:#d32f2f;font-weight:600'>${fixable}</td><td style='color:#2e7d32'>${nr}</td><td>${jira}</td><td style='color:#f57c00'>${disc}</td></tr>" >> consolidated-report.html
           done
           echo '</tbody></table>' >> consolidated-report.html
           echo '</div></div>' >> consolidated-report.html
