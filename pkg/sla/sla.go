@@ -65,6 +65,27 @@ func IsKEV(labels []string) bool {
 	return false
 }
 
+func SLADueDays(severityLabel string) int {
+	switch strings.ToUpper(severityLabel) {
+	case "CRITICAL":
+		return 30
+	case "HIGH", "IMPORTANT":
+		return 60
+	case "MEDIUM", "MODERATE":
+		return 90
+	default:
+		return 0
+	}
+}
+
+func CalculateSLADate(published time.Time, severityLabel string) time.Time {
+	days := SLADueDays(severityLabel)
+	if days == 0 {
+		return time.Time{}
+	}
+	return published.AddDate(0, 0, days)
+}
+
 func addBusinessDays(start time.Time, days int) time.Time {
 	added := 0
 	current := start

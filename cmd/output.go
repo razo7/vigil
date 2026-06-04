@@ -275,6 +275,7 @@ func htmlPrioColor(p types.Priority) string {
 func printHTMLTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln, verbose ...bool) {
 	_ = verbose
 	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
+	grouped := groupByCVE(rows)
 
 	cveVersions := map[string][]string{}
 	latestVersion := ""
@@ -292,11 +293,32 @@ func printHTMLTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *
 		}
 	}
 
-	classCounts := map[types.Classification]int{}
 	prioCounts := map[string]int{}
 	for _, r := range rows {
-		classCounts[r.classification]++
 		prioCounts[string(shortPriority(r.priority))]++
+	}
+
+	actionCounts := map[string]int{}
+	for _, r := range rows {
+		action := buildAction(r, latestVersion, cveVersions)
+		switch {
+		case strings.Contains(action, "Fix"):
+			actionCounts["Fix"]++
+		case strings.Contains(action, "Blocked"):
+			actionCounts["Blocked"]++
+		case strings.Contains(action, "No action"):
+			actionCounts["No action"]++
+		case strings.Contains(action, "Skip"):
+			actionCounts["Skip"]++
+		case strings.Contains(action, "Affected"):
+			actionCounts["Affected"]++
+		case strings.Contains(action, "Manual"):
+			actionCounts["Manual"]++
+		case strings.Contains(action, "EOL"):
+			actionCounts["EOL"]++
+		case strings.Contains(action, "Misassigned"):
+			actionCounts["Misassigned"]++
+		}
 	}
 
 	uniqueVersions := collectUniqueVersions(rows)
@@ -354,7 +376,7 @@ details .mermaid{width:max-content;min-width:100%%;padding:20px}
 	total := len(rows)
 	fmt.Println(`<div class="cards">`)
 
-	printHTMLDonutChart(classCounts, total)
+	printHTMLDonutChart(actionCounts, total)
 	printHTMLSeverityBar(prioCounts, total)
 	printHTMLActionItems(rows)
 
@@ -368,8 +390,8 @@ details .mermaid{width:max-content;min-width:100%%;padding:20px}
 <th onclick="sortTable(0)">CVE</th><th onclick="sortTable(1)">SEVERITY</th><th onclick="sortTable(2)">REACHABILITY</th><th onclick="sortTable(3)">PACKAGE</th><th onclick="sortTable(4)">VERSION</th><th onclick="sortTable(5)">ACTION</th><th onclick="sortTable(6)">TICKET</th><th onclick="sortTable(7)">DUE</th><th onclick="sortTable(8)">CREATED</th><th onclick="sortTable(9)">SRC</th>
 </tr></thead><tbody>`)
 
-	for _, row := range rows {
-		printHTMLTableRow(row, latestVersion, cveVersions)
+	for _, gr := range grouped {
+		printHTMLTableRow(gr, latestVersion, cveVersions)
 	}
 
 	fmt.Println(`</tbody></table>`)
@@ -400,8 +422,8 @@ func collectUniqueVersions(rows []combinedRow) []string {
 	return versions
 }
 
-func printHTMLDonutChart(classCounts map[types.Classification]int, total int) {
-	fmt.Println(`<div class="card"><h3>Classification Breakdown</h3>`)
+func printHTMLDonutChart(actionCounts map[string]int, total int) {
+	fmt.Println(`<div class="card"><h3>Action Breakdown</h3>`)
 	if total > 0 {
 		type slice struct {
 			label string
@@ -409,11 +431,14 @@ func printHTMLDonutChart(classCounts map[types.Classification]int, total int) {
 			color string
 		}
 		slices := []slice{
-			{"Fixable Now", classCounts[types.FixableNow], "#d32f2f"},
-			{"Not Reachable", classCounts[types.NotReachable], "#388e3c"},
-			{"Blocked by Go", classCounts[types.BlockedByGo], "#f57c00"},
-			{"Unknown", classCounts[types.Unknown], "#fbc02d"},
-			{"Misassigned", classCounts[types.Misassigned], "#9e9e9e"},
+			{"Fix", actionCounts["Fix"], "#d32f2f"},
+			{"Blocked", actionCounts["Blocked"], "#f57c00"},
+			{"No action", actionCounts["No action"], "#388e3c"},
+			{"Skip", actionCounts["Skip"], "#81c784"},
+			{"Affected", actionCounts["Affected"], "#66bb6a"},
+			{"Manual", actionCounts["Manual"], "#fbc02d"},
+			{"EOL", actionCounts["EOL"], "#9e9e9e"},
+			{"Misassigned", actionCounts["Misassigned"], "#9e9e9e"},
 		}
 		fmt.Println(`<svg viewBox="0 0 200 200" width="180" height="180">`)
 		startAngle := -90.0
@@ -470,7 +495,7 @@ func printHTMLSeverityBar(prioCounts map[string]int, total int) {
 			continue
 		}
 		pct := float64(s.count) / float64(total) * 100
-		fmt.Printf(`<div style="width:%.0f%%;background:%s">%s %d</div>%s`, pct, s.color, s.label, s.count, "\n")
+		fmt.Printf(`<div style="width:%.0f%%;background:%s;min-width:60px">%s %d</div>%s`, pct, s.color, s.label, s.count, "\n")
 	}
 	fmt.Println(`</div></div>`)
 }
@@ -541,7 +566,8 @@ func printHTMLVersionTabs(versions []string) {
 	fmt.Println(`</div>`)
 }
 
-func printHTMLTableRow(row combinedRow, latestVersion string, cveVersions map[string][]string) {
+func printHTMLTableRow(gr groupedRow, latestVersion string, cveVersions map[string][]string) {
+	row := gr.combinedRow
 	srcDisplay := row.src
 	if row.lang != "Go" {
 		srcDisplay = fmt.Sprintf("%s (%s)", row.src, row.lang)
@@ -583,8 +609,29 @@ func printHTMLTableRow(row combinedRow, latestVersion string, cveVersions map[st
 		versionAttr = "main"
 	}
 
+	versionCell := row.version
+	if len(gr.subRows) > 1 {
+		var miniRows strings.Builder
+		miniRows.WriteString(`<details><summary>`)
+		miniRows.WriteString(row.version)
+		miniRows.WriteString(`</summary><table style="font-size:12px;margin-top:4px"><tr><th>Version</th><th>Reachability</th><th>Action</th><th>Ticket</th></tr>`)
+		for _, sub := range gr.subRows {
+			subAction := htmlAction(sub, latestVersion, cveVersions)
+			subTicket := sub.ticket
+			if subTicket == "-- none --" {
+				subTicket = "—"
+			}
+			if sub.ticketURL != "" && subTicket != "—" {
+				subTicket = fmt.Sprintf(`<a href="%s">%s</a>`, sub.ticketURL, subTicket)
+			}
+			miniRows.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`, sub.version, sub.reachability, subAction, subTicket))
+		}
+		miniRows.WriteString(`</table></details>`)
+		versionCell = miniRows.String()
+	}
+
 	fmt.Printf(`<tr id="%s" data-version="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td style="white-space:normal;word-break:break-word;max-width:220px">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
-		row.ticket, versionAttr, cveCell, severityCell, reachCell, pkgDisplay, row.version, actionCell, ticketCell, dueCell, row.created, srcDisplay)
+		row.ticket, versionAttr, cveCell, severityCell, reachCell, pkgDisplay, versionCell, actionCell, ticketCell, dueCell, row.created, srcDisplay)
 	fmt.Println()
 }
 

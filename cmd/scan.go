@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/razo7/vigil/pkg/assess"
+	"github.com/razo7/vigil/pkg/cve"
 	"github.com/razo7/vigil/pkg/discover"
 	"github.com/razo7/vigil/pkg/fix"
 	"github.com/razo7/vigil/pkg/goversion"
@@ -17,6 +18,7 @@ import (
 	"github.com/razo7/vigil/pkg/lifecycle"
 	"github.com/razo7/vigil/pkg/route"
 	"github.com/razo7/vigil/pkg/report"
+	"github.com/razo7/vigil/pkg/sla"
 	"github.com/razo7/vigil/pkg/trivy"
 	"github.com/razo7/vigil/pkg/types"
 	"github.com/spf13/cobra"
@@ -518,6 +520,48 @@ func runCombinedScan() error {
 		}
 	}
 
+	cvssCount := 0
+	const cvssMaxFetch = 20
+	for i := range discoveredGaps {
+		if cvssCount >= cvssMaxFetch {
+			break
+		}
+		if discoveredGaps[i].Severity == 0 && len(discoveredGaps[i].CVEIDs) > 0 {
+			cveID := discoveredGaps[i].CVEIDs[0]
+			if strings.HasPrefix(cveID, "CVE-") {
+				if info, err := cve.FetchCVSSScore(cveID); err == nil && info != nil {
+					discoveredGaps[i].Severity = info.Score
+					discoveredGaps[i].SeverityLabel = info.Severity
+					if discoveredGaps[i].CVEPublished == "" && info.Published != "" {
+						discoveredGaps[i].CVEPublished = info.Published
+					}
+					cvssCount++
+				}
+			}
+		}
+	}
+	for i := range trivyVulns {
+		if cvssCount >= cvssMaxFetch {
+			break
+		}
+		if trivyVulns[i].Severity == 0 && len(trivyVulns[i].CVEIDs) > 0 {
+			cveID := trivyVulns[i].CVEIDs[0]
+			if strings.HasPrefix(cveID, "CVE-") {
+				if info, err := cve.FetchCVSSScore(cveID); err == nil && info != nil {
+					trivyVulns[i].Severity = info.Score
+					trivyVulns[i].SeverityLabel = info.Severity
+					if trivyVulns[i].CVEPublished == "" && info.Published != "" {
+						trivyVulns[i].CVEPublished = info.Published
+					}
+					cvssCount++
+				}
+			}
+		}
+	}
+	if cvssCount > 0 {
+		fmt.Fprintf(os.Stderr, "Fetching CVSS for %d discovered CVEs...\n", cvssCount)
+	}
+
 	if scanDetectOnly {
 		output := types.DetectionOutput{
 			Findings:   results,
@@ -798,6 +842,117 @@ type combinedRow struct {
 	misassignReason     string
 }
 
+type groupedRow struct {
+	combinedRow
+	subRows []combinedRow
+}
+
+func reachabilityRank(r string) int {
+	switch r {
+	case "REACHABLE":
+		return 0
+	case "TEST-ONLY":
+		return 1
+	case "PACKAGE-LEVEL":
+		return 2
+	case "MODULE-LEVEL":
+		return 3
+	case "UNKNOWN":
+		return 4
+	default:
+		return 5
+	}
+}
+
+func groupByCVE(rows []combinedRow) []groupedRow {
+	type group struct {
+		rows []combinedRow
+	}
+	orderKeys := make([]string, 0)
+	groups := make(map[string]*group)
+	for _, r := range rows {
+		key := r.cveID
+		if g, ok := groups[key]; ok {
+			g.rows = append(g.rows, r)
+		} else {
+			orderKeys = append(orderKeys, key)
+			groups[key] = &group{rows: []combinedRow{r}}
+		}
+	}
+
+	priorityOrder := map[types.Priority]int{
+		types.PriorityCritical:    0,
+		types.PriorityHigh:        1,
+		types.PriorityMedium:      2,
+		types.PriorityLow:         3,
+		types.PriorityManual:      4,
+		types.PriorityMisassigned: 5,
+	}
+
+	var result []groupedRow
+	for _, key := range orderKeys {
+		g := groups[key]
+		if len(g.rows) == 1 {
+			result = append(result, groupedRow{combinedRow: g.rows[0]})
+			continue
+		}
+
+		summary := g.rows[0]
+
+		versionSet := map[string]bool{}
+		ticketSet := map[string]bool{}
+		var versions []string
+		var tickets []string
+
+		for _, r := range g.rows {
+			if !versionSet[r.version] {
+				versionSet[r.version] = true
+				versions = append(versions, r.version)
+			}
+			if r.ticket != "-- none --" && r.ticket != "" && !ticketSet[r.ticket] {
+				ticketSet[r.ticket] = true
+				tickets = append(tickets, r.ticket)
+			}
+
+			if priorityOrder[r.priority] < priorityOrder[summary.priority] {
+				summary.priority = r.priority
+			}
+			if reachabilityRank(r.reachability) < reachabilityRank(summary.reachability) {
+				summary.reachability = r.reachability
+				summary.callPaths = r.callPaths
+				summary.importChain = r.importChain
+			}
+			if r.cvss > summary.cvss {
+				summary.cvss = r.cvss
+			}
+			if r.created != "" && (summary.created == "" || r.created < summary.created) {
+				summary.created = r.created
+			}
+			if r.slaDueDate != "" && (summary.slaDueDate == "" || r.slaDueDate < summary.slaDueDate) {
+				summary.slaDueDate = r.slaDueDate
+				summary.slaStatus = r.slaStatus
+			}
+			if actionRank(r) < actionRank(summary) {
+				summary.classification = r.classification
+				summary.fixRoute = r.fixRoute
+				summary.fixFunctionMismatch = r.fixFunctionMismatch
+				summary.misassignReason = r.misassignReason
+			}
+			if r.ticketURL != "" && summary.ticketURL == "" {
+				summary.ticketURL = r.ticketURL
+			}
+		}
+
+		summary.version = strings.Join(versions, ",")
+		if len(tickets) > 0 {
+			summary.ticket = strings.Join(tickets, ",")
+		}
+
+		result = append(result, groupedRow{combinedRow: summary, subRows: g.rows})
+	}
+	return result
+}
+
 func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln) []combinedRow {
 	discCVEs := make(map[string]bool)
 	if disc != nil {
@@ -874,7 +1029,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 		if disc != nil {
 			gapCurrentGo = disc.GoVersion
 		}
-		rows = append(rows, combinedRow{
+		gapRow := combinedRow{
 			src:            compositeSource("G", false, gapInTrivy),
 			ticket:         "-- none --",
 			cveID:          formatCVEAliases(sortedIDs, 0),
@@ -893,7 +1048,9 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			created:        v.CVEPublished,
 			fixVersion:     shortFixVersion(v.FixVersion),
 			currentGo:      gapCurrentGo,
-		})
+		}
+		calculateDiscoveredSLA(&gapRow, v.CVEPublished, v.Severity, v.SeverityLabel)
+		rows = append(rows, gapRow)
 	}
 	for _, v := range trivyVulns {
 		trivySortedIDs := preferCVEIDs(v.CVEIDs)
@@ -901,7 +1058,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 		if disc != nil {
 			trivyCurrentGo = disc.GoVersion
 		}
-		rows = append(rows, combinedRow{
+		trivyRow := combinedRow{
 			src:            "Trivy",
 			ticket:         "-- none --",
 			cveID:          formatCVEAliases(trivySortedIDs, 0),
@@ -918,7 +1075,9 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			created:        v.CVEPublished,
 			fixVersion:     shortFixVersion(v.FixVersion),
 			currentGo:      trivyCurrentGo,
-		})
+		}
+		calculateDiscoveredSLA(&trivyRow, v.CVEPublished, v.Severity, v.SeverityLabel)
+		rows = append(rows, trivyRow)
 	}
 
 	sortCombinedRows(rows)
@@ -928,6 +1087,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, disc *types.DiscoverResult, trivyVulns []types.DiscoveredVuln, errors []string) {
 	isTTY := forceColor || term.IsTerminal(int(os.Stdout.Fd()))
 	rows := buildCombinedRows(results, gaps, disc, trivyVulns)
+	grouped := groupByCVE(rows)
 
 	type renderedRow struct {
 		cveID, cveURL, severity, reach, pkg, version string
@@ -956,7 +1116,8 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	var rendered []renderedRow
 	counts := map[types.Classification]int{}
 
-	for _, row := range rows {
+	for _, gr := range grouped {
+		row := gr.combinedRow
 		counts[row.classification]++
 
 		severity := fmt.Sprintf("%s (%.1f)", shortPriority(row.priority), row.cvss)
@@ -1082,33 +1243,28 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 		fmt.Println(strings.Repeat("-", lineWidth))
 	}
 
-	var summary []string
-	summary = append(summary, fmt.Sprintf("%d Jira tickets", len(results)))
+	total := len(grouped)
+	var parts []string
 	if n := counts[types.FixableNow]; n > 0 {
-		summary = append(summary, fmt.Sprintf("%d fixable", n))
+		parts = append(parts, fmt.Sprintf("%d fixable", n))
 	}
 	if n := counts[types.BlockedByGo]; n > 0 {
-		summary = append(summary, fmt.Sprintf("%d blocked", n))
+		parts = append(parts, fmt.Sprintf("%d blocked", n))
 	}
 	if n := counts[types.NotReachable]; n > 0 {
-		summary = append(summary, fmt.Sprintf("%d not-reachable", n))
+		parts = append(parts, fmt.Sprintf("%d not-reachable", n))
 	}
 	if n := counts[types.Unknown]; n > 0 {
-		summary = append(summary, fmt.Sprintf("%d unknown", n))
+		parts = append(parts, fmt.Sprintf("%d unknown", n))
 	}
 	if n := counts[types.Misassigned]; n > 0 {
-		summary = append(summary, fmt.Sprintf("%d misassigned", n))
-	}
-	if len(gaps) > 0 {
-		summary = append(summary, fmt.Sprintf("%d discovered (no ticket)", len(gaps)))
-	}
-	if len(trivyVulns) > 0 {
-		summary = append(summary, fmt.Sprintf("%d trivy-only", len(trivyVulns)))
+		parts = append(parts, fmt.Sprintf("%d misassigned", n))
 	}
 	if len(errors) > 0 {
-		summary = append(summary, fmt.Sprintf("%d errors", len(errors)))
+		parts = append(parts, fmt.Sprintf("%d errors", len(errors)))
 	}
-	fmt.Println(strings.Join(summary, ", "))
+	sources := fmt.Sprintf("(%d Jira, %d discovered)", len(results), len(gaps)+len(trivyVulns))
+	fmt.Printf("%d CVEs: %s %s\n", total, strings.Join(parts, ", "), sources)
 
 	threshold := getConfig().EOLThresholdDuration()
 	if threshold > 0 {
@@ -1146,6 +1302,40 @@ func statusRank(status string) int {
 	default:
 		return 8
 	}
+}
+
+func severityLabelFromScore(score float64) string {
+	switch {
+	case score >= 9.0:
+		return "CRITICAL"
+	case score >= 7.0:
+		return "HIGH"
+	case score >= 4.0:
+		return "MEDIUM"
+	default:
+		return "LOW"
+	}
+}
+
+func calculateDiscoveredSLA(row *combinedRow, published string, severity float64, severityLabel string) {
+	if published == "" || severity == 0 {
+		return
+	}
+	pub, err := time.Parse("2006-01-02", published)
+	if err != nil {
+		return
+	}
+	label := severityLabel
+	if label == "" {
+		label = severityLabelFromScore(severity)
+	}
+	slaDue := sla.CalculateSLADate(pub, label)
+	if slaDue.IsZero() {
+		return
+	}
+	row.slaDueDate = slaDue.Format("2006-01-02")
+	st, _ := sla.Status(slaDue)
+	row.slaStatus = st
 }
 
 func buildImportChainForResult(r *types.Result, callPaths []string) string {
