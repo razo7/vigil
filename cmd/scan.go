@@ -408,14 +408,15 @@ func runCombinedScan() error {
 						discResult = &types.DiscoverResult{}
 					}
 					dv := types.DiscoveredVuln{
-						CVEIDs:      []string{alias},
-						Package:     entry.Package,
-						Description: entry.ID,
-						Source:       fmt.Sprintf("GVC(%s)", branch),
-						Version:     ver,
-						CurrentGo:   goMod.EffectiveVersion(),
-						FixVersion:  entry.FixVersion,
-						CallPaths:   entry.CallPaths,
+						CVEIDs:           []string{alias},
+						Package:          entry.Package,
+						Description:      entry.ID,
+						Source:            fmt.Sprintf("GVC(%s)", branch),
+						Version:          ver,
+						CurrentGo:        goMod.EffectiveVersion(),
+						FixVersion:       entry.FixVersion,
+						InstalledVersion: entry.InstalledVersion,
+						CallPaths:        entry.CallPaths,
 					}
 					if entry.Reachable {
 						dv.Reachability = "REACHABLE"
@@ -828,6 +829,7 @@ type combinedRow struct {
 	slaDueDate          string
 	slaStatus           string
 	fixVersion          string
+	installedVersion    string
 	currentGo           string
 	fixRoute            route.Route
 	fixFunctionMismatch bool
@@ -1038,8 +1040,9 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			callPaths:      v.CallPaths,
 			importChain:    v.ImportChain,
 			created:        v.CVEPublished,
-			fixVersion:     shortFixVersion(v.FixVersion),
-			currentGo:      gapCurrentGo,
+			fixVersion:       shortFixVersion(v.FixVersion),
+			installedVersion: v.InstalledVersion,
+			currentGo:        gapCurrentGo,
 		}
 		calculateDiscoveredSLA(&gapRow, v.CVEPublished, v.Severity, v.SeverityLabel, v.Priority)
 		rows = append(rows, gapRow)
@@ -1425,7 +1428,7 @@ func buildAction(row combinedRow, latestVer string, cveVersions map[string][]str
 	case types.BlockedByGo:
 		return "\U0001F7E0⏳ Blocked"
 	case types.FixableNow:
-		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion, row.currentGo, row.pkg)
+		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion, row.currentGo, row.pkg, row.installedVersion)
 	default:
 		return "❓ Manual review"
 	}
@@ -1435,7 +1438,7 @@ func isStdlibPackage(pkg string) bool {
 	return pkg != "" && !strings.Contains(pkg, ".")
 }
 
-func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string, cvss float64, fixVersion, currentGo, pkg string) string {
+func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]string, cvss float64, fixVersion, currentGo, pkg, installedVersion string) string {
 	isQualified := cvss >= 7.0
 
 	operatorName := ""
@@ -1490,7 +1493,11 @@ func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]s
 			if i := strings.LastIndex(pkg, "/"); i >= 0 {
 				shortPkg = pkg[i+1:]
 			}
-			fixHint = " (" + shortPkg + " → " + fixVersion + ")"
+			if installedVersion != "" {
+				fixHint = " (" + shortPkg + " " + installedVersion + " → " + fixVersion + ")"
+			} else {
+				fixHint = " (" + shortPkg + " → " + fixVersion + ")"
+			}
 		}
 	}
 

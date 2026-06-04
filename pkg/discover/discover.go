@@ -93,16 +93,17 @@ func Run(ctx context.Context, opts Options) (*types.DiscoverResult, error) {
 	var vulns []types.DiscoveredVuln
 	for _, entry := range vulnResult.Vulns {
 		dv := types.DiscoveredVuln{
-			VulnID:         entry.ID,
-			Description:    entry.Summary,
-			CVEIDs:         entry.Aliases,
-			Package:        entry.Package,
-			PackageSource:  "govulncheck",
-			Language:       "Go",
-			LanguageSource: "govulncheck",
-			Reachability:   goversion.ReachabilityLabel(&entry),
-			FixVersion:     entry.FixVersion,
-			CallPaths:      entry.CallPaths,
+			VulnID:           entry.ID,
+			Description:      entry.Summary,
+			CVEIDs:           entry.Aliases,
+			Package:          entry.Package,
+			PackageSource:    "govulncheck",
+			Language:         "Go",
+			LanguageSource:   "govulncheck",
+			Reachability:     goversion.ReachabilityLabel(&entry),
+			FixVersion:       entry.FixVersion,
+			InstalledVersion: entry.InstalledVersion,
+			CallPaths:        entry.CallPaths,
 		}
 
 		matchedTickets := findMatchingTickets(entry.Aliases, ticketMap)

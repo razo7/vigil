@@ -31,9 +31,10 @@ type VulnEntry struct {
 	Reachable      bool
 	ModuleOnly     bool
 	AffectedRanges []AffectedRange
-	FixVersion     string
-	CallPaths      []string
-	TestOnly       bool
+	FixVersion       string
+	InstalledVersion string
+	CallPaths        []string
+	TestOnly         bool
 }
 
 type vulncheckMessage struct {
@@ -49,6 +50,7 @@ type vulncheckFinding struct {
 
 type vulncheckFrame struct {
 	Module   string             `json:"module,omitempty"`
+	Version  string             `json:"version,omitempty"`
 	Package  string             `json:"package,omitempty"`
 	Function string             `json:"function,omitempty"`
 	Receiver string             `json:"receiver,omitempty"`
@@ -290,6 +292,9 @@ func parseGovulncheckOutput(data []byte, ownModulePath ...string) (*VulncheckRes
 				}
 				if entry.Module == "" && frame.Module != "" {
 					entry.Module = frame.Module
+				}
+				if entry.InstalledVersion == "" && frame.Version != "" {
+					entry.InstalledVersion = strings.TrimPrefix(frame.Version, "v")
 				}
 				if entry.Package == "" && frame.Package != "" {
 					entry.Package = frame.Package

@@ -11,7 +11,8 @@ type DiscoveredVuln struct {
 	Language       string         `json:"language"`
 	LanguageSource string         `json:"language_source"`
 	Reachability   string         `json:"reachability"`
-	FixVersion     string         `json:"fix_version,omitempty"`
+	FixVersion        string         `json:"fix_version,omitempty"`
+	InstalledVersion  string         `json:"installed_version,omitempty"`
 	CallPaths      []string       `json:"call_paths,omitempty"`
 	ImportChain    string         `json:"import_chain,omitempty"`
 	Severity       float64        `json:"severity"`
