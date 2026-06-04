@@ -20,8 +20,15 @@ type Cache struct {
 	Entries []CacheEntry `json:"entries"`
 }
 
-const cacheDir = ".vigil"
+var cacheDir = resolveCacheDir()
 const cacheFileName = "downstream-go-cache.json"
+
+func resolveCacheDir() string {
+	if home := os.Getenv("HOME"); home != "" {
+		return filepath.Join(home, ".vigil")
+	}
+	return ".vigil"
+}
 const maxAge = 7 * 24 * time.Hour
 
 func cacheFilePath() string {

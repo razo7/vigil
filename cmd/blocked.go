@@ -3,13 +3,21 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/razo7/vigil/pkg/types"
 	"github.com/razo7/vigil/pkg/watch"
 )
 
-const defaultRegistryDir = ".vigil"
+var defaultRegistryDir = resolveRegistryDir()
+
+func resolveRegistryDir() string {
+	if home := os.Getenv("HOME"); home != "" {
+		return filepath.Join(home, ".vigil")
+	}
+	return ".vigil"
+}
 
 func recordBlockedCVE(result *types.Result) {
 	reg, err := watch.LoadRegistry(defaultRegistryDir)
