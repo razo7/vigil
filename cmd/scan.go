@@ -521,45 +521,66 @@ func runCombinedScan() error {
 	}
 
 	cvssCount := 0
-	const cvssMaxFetch = 20
-	for i := range discoveredGaps {
-		if cvssCount >= cvssMaxFetch {
-			break
+	cvssTotal := 0
+	for _, d := range discoveredGaps {
+		if d.Severity == 0 {
+			cvssTotal++
 		}
+	}
+	for _, d := range trivyVulns {
+		if d.Severity == 0 {
+			cvssTotal++
+		}
+	}
+	if cvssTotal > 0 {
+		fmt.Fprintf(os.Stderr, "Fetching CVSS for %d discovered CVEs...\n", cvssTotal)
+	}
+	for i := range discoveredGaps {
 		if discoveredGaps[i].Severity == 0 && len(discoveredGaps[i].CVEIDs) > 0 {
-			cveID := discoveredGaps[i].CVEIDs[0]
-			if strings.HasPrefix(cveID, "CVE-") {
-				if info, err := cve.FetchCVSSScore(cveID); err == nil && info != nil {
-					discoveredGaps[i].Severity = info.Score
-					discoveredGaps[i].SeverityLabel = info.Severity
-					if discoveredGaps[i].CVEPublished == "" && info.Published != "" {
-						discoveredGaps[i].CVEPublished = info.Published
-					}
-					cvssCount++
+			cveID := ""
+			for _, id := range discoveredGaps[i].CVEIDs {
+				if strings.HasPrefix(id, "CVE-") {
+					cveID = id
+					break
 				}
+			}
+			if cveID == "" {
+				continue
+			}
+			if info, err := cve.FetchCVSSScore(cveID); err == nil && info != nil {
+				discoveredGaps[i].Severity = info.Score
+				discoveredGaps[i].SeverityLabel = info.Severity
+				if discoveredGaps[i].CVEPublished == "" && info.Published != "" {
+					discoveredGaps[i].CVEPublished = info.Published
+				}
+				cvssCount++
 			}
 		}
 	}
 	for i := range trivyVulns {
-		if cvssCount >= cvssMaxFetch {
-			break
-		}
 		if trivyVulns[i].Severity == 0 && len(trivyVulns[i].CVEIDs) > 0 {
-			cveID := trivyVulns[i].CVEIDs[0]
-			if strings.HasPrefix(cveID, "CVE-") {
-				if info, err := cve.FetchCVSSScore(cveID); err == nil && info != nil {
-					trivyVulns[i].Severity = info.Score
-					trivyVulns[i].SeverityLabel = info.Severity
-					if trivyVulns[i].CVEPublished == "" && info.Published != "" {
-						trivyVulns[i].CVEPublished = info.Published
-					}
-					cvssCount++
+			cveID := ""
+			for _, id := range trivyVulns[i].CVEIDs {
+				if strings.HasPrefix(id, "CVE-") {
+					cveID = id
+					break
 				}
+			}
+			if cveID == "" {
+				continue
+			}
+			if info, err := cve.FetchCVSSScore(cveID); err == nil && info != nil {
+				trivyVulns[i].Severity = info.Score
+				trivyVulns[i].SeverityLabel = info.Severity
+				if trivyVulns[i].CVEPublished == "" && info.Published != "" {
+					trivyVulns[i].CVEPublished = info.Published
+				}
+				cvssCount++
 			}
 		}
 	}
 	if cvssCount > 0 {
-		fmt.Fprintf(os.Stderr, "Fetching CVSS for %d discovered CVEs...\n", cvssCount)
+		fmt.Fprintf(os.Stderr, "Fetched CVSS for %d CVEs\n", cvssCount)
 	}
 
 	if scanDetectOnly {
@@ -1049,7 +1070,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			fixVersion:     shortFixVersion(v.FixVersion),
 			currentGo:      gapCurrentGo,
 		}
-		calculateDiscoveredSLA(&gapRow, v.CVEPublished, v.Severity, v.SeverityLabel)
+		calculateDiscoveredSLA(&gapRow, v.CVEPublished, v.Severity, v.SeverityLabel, v.Priority)
 		rows = append(rows, gapRow)
 	}
 	for _, v := range trivyVulns {
@@ -1076,7 +1097,7 @@ func buildCombinedRows(results []*types.Result, gaps []types.DiscoveredVuln, dis
 			fixVersion:     shortFixVersion(v.FixVersion),
 			currentGo:      trivyCurrentGo,
 		}
-		calculateDiscoveredSLA(&trivyRow, v.CVEPublished, v.Severity, v.SeverityLabel)
+		calculateDiscoveredSLA(&trivyRow, v.CVEPublished, v.Severity, v.SeverityLabel, v.Priority)
 		rows = append(rows, trivyRow)
 	}
 
@@ -1317,8 +1338,17 @@ func severityLabelFromScore(score float64) string {
 	}
 }
 
-func calculateDiscoveredSLA(row *combinedRow, published string, severity float64, severityLabel string) {
-	if published == "" || severity == 0 {
+func calculateDiscoveredSLA(row *combinedRow, published string, severity float64, severityLabel string, priority types.Priority) {
+	if published == "" {
+		return
+	}
+	if severityLabel == "" && severity > 0 {
+		severityLabel = severityLabelFromScore(severity)
+	}
+	if severityLabel == "" && priority != "" {
+		severityLabel = string(priority)
+	}
+	if severityLabel == "" {
 		return
 	}
 	pub, err := time.Parse("2006-01-02", published)
@@ -1432,7 +1462,7 @@ func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]s
 	}
 
 	if len(qualified) == 0 && len(skipped) > 0 {
-		return "\U0001F7E2 Skip (Moderate — doesn't qualify for Maintenance/EUS)"
+		return "\U0001F7E2 Skip (Moderate)"
 	}
 
 	fixHint := ""

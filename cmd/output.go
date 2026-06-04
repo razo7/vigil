@@ -432,13 +432,13 @@ func printHTMLDonutChart(actionCounts map[string]int, total int) {
 		}
 		slices := []slice{
 			{"Fix", actionCounts["Fix"], "#d32f2f"},
-			{"Blocked", actionCounts["Blocked"], "#f57c00"},
-			{"No action", actionCounts["No action"], "#388e3c"},
-			{"Skip", actionCounts["Skip"], "#81c784"},
-			{"Affected", actionCounts["Affected"], "#66bb6a"},
-			{"Manual", actionCounts["Manual"], "#fbc02d"},
-			{"EOL", actionCounts["EOL"], "#9e9e9e"},
-			{"Misassigned", actionCounts["Misassigned"], "#9e9e9e"},
+			{"Blocked", actionCounts["Blocked"], "#e65100"},
+			{"No action", actionCounts["No action"], "#2e7d32"},
+			{"Skip", actionCounts["Skip"], "#ffb300"},
+			{"Affected", actionCounts["Affected"], "#7cb342"},
+			{"Manual", actionCounts["Manual"], "#6a1b9a"},
+			{"EOL", actionCounts["EOL"], "#757575"},
+			{"Misassigned", actionCounts["Misassigned"], "#bdbdbd"},
 		}
 		fmt.Println(`<svg viewBox="0 0 200 200" width="180" height="180">`)
 		startAngle := -90.0

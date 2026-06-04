@@ -140,12 +140,12 @@ jobs:
           {
             echo "# 🔍 Vigil Weekly CVE Scan"
             echo ""
-            echo "| Component | Assessed | Fixable | Not Reachable | Discovered | Full Result |"
+            echo "| Component | Jira | Fixable | Not Reachable | Discovered | Full Result |"
             echo "|-----------|----------|---------|---------------|------------|-------------|"
             for f in *-scan.txt; do
               COMP=$(basename "$f" -scan.txt)
               SUMMARY=$(tail -1 "$f")
-              assessed=$(echo "$SUMMARY" | grep -oP '\d+ Jira tickets' || echo "0 Jira tickets")
+              assessed=$(echo "$SUMMARY" | grep -oP '\d+ Jira' || echo "0 Jira tickets")
               fixable=$(echo "$SUMMARY" | grep -oP '\d+ fixable' || echo "0 fixable")
               notreach=$(echo "$SUMMARY" | grep -oP '\d+ not-reachable' || echo "0 not-reachable")
               disc=$(echo "$SUMMARY" | grep -oP '\d+ discovered[^,]*' || echo "0 discovered")
@@ -195,7 +195,7 @@ jobs:
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
             SUMMARY=$(tail -1 "$f")
-            assessed=$(echo "$SUMMARY" | grep -oP '\d+ Jira tickets' | grep -oP '\d+' || echo 0)
+            assessed=$(echo "$SUMMARY" | grep -oP '\d+ Jira' | grep -oP '\d+' || echo 0)
             fixable=$(echo "$SUMMARY" | grep -oP '\d+ fixable' | grep -oP '\d+' || echo 0)
             total_assessed=$((total_assessed + assessed))
             total_fixable=$((total_fixable + fixable))
@@ -206,7 +206,7 @@ jobs:
           done
           echo '</div>' >> consolidated-report.html
 
-          echo "<p><strong>Total:</strong> ${total_assessed} assessed, ${total_fixable} fixable across $(ls *-scan.txt | wc -l) components</p>" >> consolidated-report.html
+          echo "<p><strong>Total:</strong> ${total_fixable} fixable across $(ls *-scan.txt | wc -l) components (${total_assessed} Jira tickets)</p>" >> consolidated-report.html
 
           # Tabs
           echo '<div class="tabs">' >> consolidated-report.html
@@ -225,7 +225,7 @@ jobs:
           num_comps=0
           for f in *-scan.txt; do
             S=$(tail -1 "$f")
-            assessed=$(echo "$S" | grep -oP '\d+(?= Jira tickets)' || echo 0)
+            assessed=$(echo "$S" | grep -oP '\d+(?= Jira)' || echo 0)
             fix=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
             nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)
@@ -242,7 +242,7 @@ jobs:
           echo '<h2 style="margin-top:0">Executive Summary</h2>' >> consolidated-report.html
           echo "<p style='font-size:15px;line-height:1.6'>" >> consolidated-report.html
           echo "Vigil scanned <strong>${num_comps} components</strong> across all supported release branches." >> consolidated-report.html
-          echo "Of <strong>${t_assessed} Jira CVE tickets</strong> assessed:" >> consolidated-report.html
+          echo "From <strong>${t_assessed} Jira tickets</strong> and <strong>${t_disc} discovered CVEs</strong>:" >> consolidated-report.html
           echo "</p>" >> consolidated-report.html
           echo '<ul style="font-size:15px;line-height:1.8">' >> consolidated-report.html
           echo "<li>🔴 <strong>${t_fix} require action</strong> — fixes available and deployable</li>" >> consolidated-report.html
@@ -303,11 +303,11 @@ jobs:
           # Component breakdown table
           echo '<div style="flex:1;min-width:300px">' >> consolidated-report.html
           echo '<h3 style="margin-top:0">Component Breakdown</h3>' >> consolidated-report.html
-          echo '<table><thead><tr><th>Component</th><th>Assessed</th><th>🔴 Fix</th><th>🟢 Safe</th><th>🟠 New</th><th>Errors</th></tr></thead><tbody>' >> consolidated-report.html
+          echo '<table><thead><tr><th>Component</th><th>Jira</th><th>🔴 Fix</th><th>🟢 Safe</th><th>🟠 New</th><th>Errors</th></tr></thead><tbody>' >> consolidated-report.html
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
             S=$(tail -1 "$f")
-            assessed=$(echo "$S" | grep -oP '\d+(?= Jira tickets)' || echo 0)
+            assessed=$(echo "$S" | grep -oP '\d+(?= Jira)' || echo 0)
             fixable=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
             nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)
