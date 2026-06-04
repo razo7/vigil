@@ -1565,6 +1565,11 @@ func sortCombinedRows(rows []combinedRow) {
 	}
 
 	sort.Slice(rows, func(i, j int) bool {
+		si := sourceRank(rows[i].src)
+		sj := sourceRank(rows[j].src)
+		if si != sj {
+			return si < sj
+		}
 		ai := actionRank(rows[i])
 		aj := actionRank(rows[j])
 		if ai != aj {
@@ -1586,11 +1591,6 @@ func sortCombinedRows(rows []combinedRow) {
 		vi := compareVersionStrings(rows[i].version, rows[j].version)
 		if vi != 0 {
 			return vi > 0
-		}
-		si := sourceRank(rows[i].src)
-		sj := sourceRank(rows[j].src)
-		if si != sj {
-			return si < sj
 		}
 		sti := statusRank(rows[i].status)
 		stj := statusRank(rows[j].status)
