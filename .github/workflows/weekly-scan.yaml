@@ -90,7 +90,7 @@ jobs:
         if: always()
         run: |
           CLEAN=$(cat ${{ matrix.component }}-scan.txt)
-          SUMMARY=$(echo "${CLEAN}" | tail -1)
+          SUMMARY=$(echo "${CLEAN}" | grep -E '^\d+ CVEs:' | tail -1)
           echo "::notice title=🔍 Vigil ${{ matrix.component }}::${SUMMARY}"
 
           {
@@ -144,7 +144,7 @@ jobs:
             echo "|-----------|----------|---------|---------------|------------|-------------|"
             for f in *-scan.txt; do
               COMP=$(basename "$f" -scan.txt)
-              SUMMARY=$(tail -1 "$f")
+              SUMMARY=$(grep -E '^\d+ CVEs:' "$f" | tail -1)
               assessed=$(echo "$SUMMARY" | grep -oP '\d+ Jira' || echo "0 Jira tickets")
               fixable=$(echo "$SUMMARY" | grep -oP '\d+ fixable' || echo "0 fixable")
               notreach=$(echo "$SUMMARY" | grep -oP '\d+ not-reachable' || echo "0 not-reachable")
@@ -194,7 +194,7 @@ jobs:
           total_discovered=0
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
-            SUMMARY=$(tail -1 "$f")
+            SUMMARY=$(grep -E '^\d+ CVEs:' "$f" | tail -1)
             assessed=$(echo "$SUMMARY" | grep -oP '\d+ Jira' | grep -oP '\d+' || echo 0)
             fixable=$(echo "$SUMMARY" | grep -oP '\d+ fixable' | grep -oP '\d+' || echo 0)
             total_assessed=$((total_assessed + assessed))
@@ -205,13 +205,6 @@ jobs:
             echo "</div>" >> consolidated-report.html
           done
           echo '</div>' >> consolidated-report.html
-
-          total_cves=0
-          for f in *-scan.txt; do
-            tc=$(tail -1 "$f" | grep -oP '^\d+' || echo 0)
-            total_cves=$((total_cves + tc))
-          done
-          echo "<p><strong>Total:</strong> ${total_cves} CVEs, ${total_fixable} fixable across $(ls *-scan.txt | wc -l) components</p>" >> consolidated-report.html
 
           # Tabs
           echo '<div class="tabs">' >> consolidated-report.html
@@ -229,7 +222,7 @@ jobs:
           t_total=0; t_fix=0; t_nr=0; t_jira=0; t_disc=0; t_errs=0
           num_comps=0
           for f in *-scan.txt; do
-            S=$(tail -1 "$f")
+            S=$(grep -E '^\d+ CVEs:' "$f" | tail -1)
             total_cves=$(echo "$S" | grep -oP '^\d+' || echo 0)
             fix=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
             nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
@@ -312,7 +305,7 @@ jobs:
           echo '<table><thead><tr><th>Component</th><th>Total</th><th>🔴 Fix</th><th>🟢 Safe</th><th>Jira</th><th>Discovered</th></tr></thead><tbody>' >> consolidated-report.html
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
-            S=$(tail -1 "$f")
+            S=$(grep -E '^\d+ CVEs:' "$f" | tail -1)
             total_cves=$(echo "$S" | grep -oP '^\d+' || echo 0)
             fixable=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
             nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
@@ -320,6 +313,7 @@ jobs:
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)
             echo "<tr onclick=\"showTab('${COMP}')\" style='cursor:pointer'><td><strong>${COMP}</strong></td><td>${total_cves}</td><td style='color:#d32f2f;font-weight:600'>${fixable}</td><td style='color:#2e7d32'>${nr}</td><td>${jira}</td><td style='color:#f57c00'>${disc}</td></tr>" >> consolidated-report.html
           done
+          echo "<tr style='background:#24292e;color:#fff;font-weight:700'><td>Total</td><td>${t_total}</td><td style='color:#ff8a80'>${t_fix}</td><td style='color:#a5d6a7'>${t_nr}</td><td>${t_jira}</td><td style='color:#ffcc80'>${t_disc}</td></tr>" >> consolidated-report.html
           echo '</tbody></table>' >> consolidated-report.html
           echo '</div></div>' >> consolidated-report.html
           echo '</div>' >> consolidated-report.html
@@ -368,7 +362,7 @@ jobs:
       #   run: |
       #     for f in *-scan.txt; do
       #       COMP=$(basename "$f" -scan.txt)
-      #       SUMMARY=$(tail -1 "$f")
+      #       SUMMARY=$(grep -E '^\d+ CVEs:' "$f" | tail -1)
       #       RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       #       curl -s -X POST "$SLACK_WEBHOOK_URL" \
       #         -H 'Content-Type: application/json' \
