@@ -238,11 +238,21 @@ jobs:
           t_skip=$((t_total - t_fix - t_nr))
           [ "$t_skip" -lt 0 ] && t_skip=0
 
+          # Deduplicate CVEs across components
+          for f in *-scan.txt; do
+            COMP=$(basename "$f" -scan.txt)
+            grep -oP 'CVE-\d+-\d+|GHSA-[a-z0-9-]+' "$f" | sort -u | while read cve; do
+              echo "${cve} ${COMP}"
+            done
+          done | sort > /tmp/all-cves.txt
+          t_unique=$(cut -d' ' -f1 /tmp/all-cves.txt | sort -u | wc -l)
+          t_shared=$(cut -d' ' -f1 /tmp/all-cves.txt | sort | uniq -c | awk '$1 > 1 {print $2}' | wc -l)
+
           # Executive summary
           echo '<div style="background:#fff;border:1px solid #e1e4e8;border-radius:8px;padding:20px;margin:16px 0">' >> consolidated-report.html
           echo '<h2 style="margin-top:0">Executive Summary</h2>' >> consolidated-report.html
           echo "<p style='font-size:15px;line-height:1.6'>" >> consolidated-report.html
-          echo "Vigil scanned <strong>${num_comps} components</strong> across all supported release branches and found <strong>${t_total} unique CVEs</strong> (${t_jira} from Jira tickets, ${t_disc} discovered by govulncheck)." >> consolidated-report.html
+          echo "Vigil scanned <strong>${num_comps} components</strong> across all supported release branches and found <strong>${t_unique} unique CVEs</strong> (${t_total} total across components, ${t_shared} shared between multiple components)." >> consolidated-report.html
           echo "</p>" >> consolidated-report.html
           echo '<ul style="font-size:15px;line-height:1.8">' >> consolidated-report.html
           echo "<li>🔴 <strong>${t_fix} fixable</strong> — fixes available and deployable</li>" >> consolidated-report.html
@@ -302,7 +312,7 @@ jobs:
           # Component breakdown table
           echo '<div style="flex:1;min-width:300px">' >> consolidated-report.html
           echo '<h3 style="margin-top:0">Component Breakdown</h3>' >> consolidated-report.html
-          echo '<table><thead><tr><th>Component</th><th>Total</th><th>🔴 Fix</th><th>🟢 Safe</th><th>Jira</th><th>Discovered</th></tr></thead><tbody>' >> consolidated-report.html
+          echo '<table><thead><tr><th>Component</th><th>Versions</th><th>Total</th><th>🔴 Fix</th><th>🟢 Safe</th><th>Jira</th><th>Discovered</th></tr></thead><tbody>' >> consolidated-report.html
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
             S=$(grep -E '^\d+ CVEs:' "$f" | tail -1)
@@ -311,11 +321,27 @@ jobs:
             nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
             jira=$(echo "$S" | grep -oP '\d+(?= Jira)' || echo 0)
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)
-            echo "<tr onclick=\"showTab('${COMP}')\" style='cursor:pointer'><td><strong>${COMP}</strong></td><td>${total_cves}</td><td style='color:#d32f2f;font-weight:600'>${fixable}</td><td style='color:#2e7d32'>${nr}</td><td>${jira}</td><td style='color:#f57c00'>${disc}</td></tr>" >> consolidated-report.html
+            versions=$(awk 'NR>2 && /^CVE-|^GHSA-/' "$f" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+/ || $i == "main") print $i}' | sort -V | uniq | paste -sd, - 2>/dev/null || echo "main")
+            if [ -z "$versions" ]; then versions="main"; fi
+            echo "<tr onclick=\"showTab('${COMP}')\" style='cursor:pointer'><td><strong>${COMP}</strong></td><td style='font-size:11px'>${versions}</td><td>${total_cves}</td><td style='color:#d32f2f;font-weight:600'>${fixable}</td><td style='color:#2e7d32'>${nr}</td><td>${jira}</td><td style='color:#f57c00'>${disc}</td></tr>" >> consolidated-report.html
           done
-          echo "<tr style='background:#24292e;color:#fff;font-weight:700'><td>Total</td><td>${t_total}</td><td style='color:#ff8a80'>${t_fix}</td><td style='color:#a5d6a7'>${t_nr}</td><td>${t_jira}</td><td style='color:#ffcc80'>${t_disc}</td></tr>" >> consolidated-report.html
+          echo "<tr style='background:#24292e;color:#fff;font-weight:700'><td>Total</td><td></td><td>${t_total}</td><td style='color:#ff8a80'>${t_fix}</td><td style='color:#a5d6a7'>${t_nr}</td><td>${t_jira}</td><td style='color:#ffcc80'>${t_disc}</td></tr>" >> consolidated-report.html
           echo '</tbody></table>' >> consolidated-report.html
           echo '</div></div>' >> consolidated-report.html
+
+          # Cross-component CVEs table
+          shared_cves=$(cut -d' ' -f1 /tmp/all-cves.txt | sort | uniq -c | awk '$1 > 1 {print $2}')
+          if [ -n "$shared_cves" ]; then
+            echo '<div style="margin-top:24px">' >> consolidated-report.html
+            echo "<h3>CVEs Affecting Multiple Components (${t_shared})</h3>" >> consolidated-report.html
+            echo '<table><thead><tr><th>CVE</th><th>Components</th></tr></thead><tbody>' >> consolidated-report.html
+            echo "$shared_cves" | while read cve; do
+              comps=$(grep "^${cve} " /tmp/all-cves.txt | awk '{print $2}' | sort | paste -sd, -)
+              echo "<tr><td><a href=\"https://www.cve.org/CVERecord?id=${cve}\">${cve}</a></td><td>${comps}</td></tr>" >> consolidated-report.html
+            done
+            echo '</tbody></table></div>' >> consolidated-report.html
+          fi
+
           echo '</div>' >> consolidated-report.html
 
           # Per-component tabs — iframe to the full HTML report
