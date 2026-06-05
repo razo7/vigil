@@ -980,7 +980,11 @@ func compareVersionStrings(a, b string) int {
 func htmlAction(row combinedRow, latestVersion string, cveVersions map[string][]string) string {
 	action := buildAction(row, latestVersion, cveVersions)
 	color := htmlActionColor(action)
-	return fmt.Sprintf(`<span class="tag" style="background:%s">%s</span>`, color, action)
+	htmlText := action
+	if i := strings.Index(htmlText, " ("); i > 0 {
+		htmlText = htmlText[:i] + "<br/>" + htmlText[i+1:]
+	}
+	return fmt.Sprintf(`<span class="tag" style="background:%s;white-space:normal;line-height:1.4">%s</span>`, color, htmlText)
 }
 
 func htmlSLAColor(status string) string {

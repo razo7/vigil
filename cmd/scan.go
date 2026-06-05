@@ -195,6 +195,9 @@ func normalizeGoVersion(v string) string {
 }
 
 func runCombinedScan() error {
+	if scanGoVersion == "" {
+		scanGoVersion = os.Getenv("GO_VERSION")
+	}
 	if scanGoVersion != "" {
 		scanGoVersion = normalizeGoVersion(scanGoVersion)
 	}
@@ -1250,6 +1253,10 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	for i, h := range headers {
 		w[i] = colWidth(h, cols[i])
 	}
+	const maxActionWidth = 45
+	if w[5] > maxActionWidth {
+		w[5] = maxActionWidth
+	}
 
 	fmtStr := fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds\n",
 		w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9])
@@ -1270,6 +1277,10 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 	}
 
 	for _, r := range rendered {
+		actionDisplay := r.action
+		if len(actionDisplay) > maxActionWidth {
+			actionDisplay = actionDisplay[:maxActionWidth-3] + "..."
+		}
 		if isTTY {
 			cveDisplay := termLink(fmt.Sprintf("%-*s", w[0], r.cveID), r.cveURL)
 			ticketDisplay := termLink(fmt.Sprintf("%-*s", w[6], r.ticket), r.ticketURL)
@@ -1281,14 +1292,14 @@ func printCombinedTable(results []*types.Result, gaps []types.DiscoveredVuln, di
 				cveDisplay,
 				prioColor, r.severity, colorReset,
 				r.reach, r.pkg, r.version,
-				actionColor, r.action, colorReset,
+				actionColor, actionDisplay, colorReset,
 				ticketDisplay,
 				dueColor, r.slaDue, colorReset,
 				r.created, r.src)
 		} else {
 			fmt.Printf(fmt.Sprintf("%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds\n",
 				w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9]),
-				r.cveID, r.severity, r.reach, r.pkg, r.version, r.action, r.ticket, r.slaDue, r.created, r.src)
+				r.cveID, r.severity, r.reach, r.pkg, r.version, actionDisplay, r.ticket, r.slaDue, r.created, r.src)
 		}
 	}
 

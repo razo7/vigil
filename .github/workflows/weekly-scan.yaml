@@ -50,12 +50,12 @@ jobs:
         id: goversion
         run: |
           case "${{ matrix.component }}" in
-            FAR) echo "version=1.25" >> "$GITHUB_OUTPUT" ;;
-            MDR) echo "version=1.25" >> "$GITHUB_OUTPUT" ;;
-            SNR) echo "version=1.25" >> "$GITHUB_OUTPUT" ;;
-            NHC) echo "version=1.25" >> "$GITHUB_OUTPUT" ;;
-            NMO) echo "version=1.25" >> "$GITHUB_OUTPUT" ;;
-            *)   echo "version=1.25" >> "$GITHUB_OUTPUT" ;;
+            FAR) echo "version=1.25.0" >> "$GITHUB_OUTPUT" ;;
+            MDR) echo "version=1.25.0" >> "$GITHUB_OUTPUT" ;;
+            SNR) echo "version=1.25.0" >> "$GITHUB_OUTPUT" ;;
+            NHC) echo "version=1.25.0" >> "$GITHUB_OUTPUT" ;;
+            NMO) echo "version=1.25.0" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "version=1.25.0" >> "$GITHUB_OUTPUT" ;;
           esac
 
       - name: Run scan
@@ -67,7 +67,7 @@ jobs:
           docker run --rm \
             -e JIRA_API_TOKEN \
             -e JIRA_EMAIL \
-            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --short --go-version "$GO_VERSION" \
+            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --short \
             2>&1 | tee ${{ matrix.component }}-raw.txt
 
           # Clean copy for artifact (no ANSI/OSC codes)
@@ -83,7 +83,7 @@ jobs:
           docker run --rm \
             -e JIRA_API_TOKEN \
             -e JIRA_EMAIL \
-            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --format html --verbose --blame --go-version "$GO_VERSION" \
+            ${{ env.IMAGE }} scan --component ${{ matrix.component }} --format html --verbose --blame \
             > ${{ matrix.component }}-report.html 2>${{ matrix.component }}-html-stderr.txt || true
 
       - name: Post summary
@@ -147,7 +147,7 @@ jobs:
               SUMMARY=$(grep -E '^\d+ CVEs:' "$f" | tail -1)
               assessed=$(echo "$SUMMARY" | grep -oP '\d+ Jira' || echo "0 Jira tickets")
               fixable=$(echo "$SUMMARY" | grep -oP '\d+ fixable' || echo "0 fixable")
-              notreach=$(echo "$SUMMARY" | grep -oP '\d+ not-reachable' || echo "0 not-reachable")
+              notreach=$(echo "$SUMMARY" | grep -oP '\d+ safe' || echo "0 safe")
               disc=$(echo "$SUMMARY" | grep -oP '\d+ discovered[^,]*' || echo "0 discovered")
               echo "| **${COMP}** | ${assessed} | ${fixable} | ${notreach} | ${disc} | ${SUMMARY} |"
             done
@@ -218,14 +218,14 @@ jobs:
           # ALL tab — executive summary + dashboard
           echo '<div id="tab-ALL" class="tab-content active">' >> consolidated-report.html
 
-          # Parse totals from new summary format: "N CVEs: X fixable, Y not-reachable (M Jira, K discovered)"
+          # Parse totals from new summary format: "N CVEs: X fixable, Y safe (M Jira, K discovered)"
           t_total=0; t_fix=0; t_nr=0; t_jira=0; t_disc=0; t_errs=0
           num_comps=0
           for f in *-scan.txt; do
             S=$(grep -E '^\d+ CVEs:' "$f" | tail -1)
             total_cves=$(echo "$S" | grep -oP '^\d+' || echo 0)
             fix=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
-            nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
+            nr=$(echo "$S" | grep -oP '\d+(?= safe)' || echo 0)
             jira=$(echo "$S" | grep -oP '\d+(?= Jira)' || echo 0)
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)
             errs=$(echo "$S" | grep -oP '\d+(?= errors)' || echo 0)
@@ -252,8 +252,9 @@ jobs:
           echo '<div style="background:#fff;border:1px solid #e1e4e8;border-radius:8px;padding:20px;margin:16px 0">' >> consolidated-report.html
           echo '<h2 style="margin-top:0">Executive Summary</h2>' >> consolidated-report.html
           echo "<p style='font-size:15px;line-height:1.6'>" >> consolidated-report.html
-          echo "Vigil scanned <strong>${num_comps} components</strong> across all supported release branches and found <strong>${t_unique} unique CVEs</strong> (${t_total} total across components, ${t_shared} shared between multiple components)." >> consolidated-report.html
+          echo "Vigil scanned <strong>${num_comps} components</strong> across all supported release branches. Found <strong>${t_unique} unique CVEs</strong> (${t_shared} shared across multiple components)." >> consolidated-report.html
           echo "</p>" >> consolidated-report.html
+          echo "<p style='font-size:15px'>Across all component scans:</p>" >> consolidated-report.html
           echo '<ul style="font-size:15px;line-height:1.8">' >> consolidated-report.html
           echo "<li>🔴 <strong>${t_fix} fixable</strong> — fixes available and deployable</li>" >> consolidated-report.html
           echo "<li>🟢 <strong>${t_nr} safe</strong> — vulnerable code is not reachable</li>" >> consolidated-report.html
@@ -312,32 +313,48 @@ jobs:
           # Component breakdown table
           echo '<div style="flex:1;min-width:300px">' >> consolidated-report.html
           echo '<h3 style="margin-top:0">Component Breakdown</h3>' >> consolidated-report.html
-          echo '<table><thead><tr><th>Component</th><th>Versions</th><th>Total</th><th>🔴 Fix</th><th>🟢 Safe</th><th>Jira</th><th>Discovered</th></tr></thead><tbody>' >> consolidated-report.html
+          echo '<table><thead><tr><th>Component</th><th>Total</th><th>🔴 Fix</th><th>🟢 Safe</th><th>Jira</th><th>Discovered</th></tr></thead><tbody>' >> consolidated-report.html
           for f in *-scan.txt; do
             COMP=$(basename "$f" -scan.txt)
             S=$(grep -E '^\d+ CVEs:' "$f" | tail -1)
             total_cves=$(echo "$S" | grep -oP '^\d+' || echo 0)
             fixable=$(echo "$S" | grep -oP '\d+(?= fixable)' || echo 0)
-            nr=$(echo "$S" | grep -oP '\d+(?= not-reachable)' || echo 0)
+            nr=$(echo "$S" | grep -oP '\d+(?= safe)' || echo 0)
             jira=$(echo "$S" | grep -oP '\d+(?= Jira)' || echo 0)
             disc=$(echo "$S" | grep -oP '\d+(?= discovered)' || echo 0)
-            versions=$(awk 'NR>2 && /^CVE-|^GHSA-/' "$f" | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+/ || $i == "main") print $i}' | sort -V | uniq | paste -sd, - 2>/dev/null || echo "main")
-            if [ -z "$versions" ]; then versions="main"; fi
-            echo "<tr onclick=\"showTab('${COMP}')\" style='cursor:pointer'><td><strong>${COMP}</strong></td><td style='font-size:11px'>${versions}</td><td>${total_cves}</td><td style='color:#d32f2f;font-weight:600'>${fixable}</td><td style='color:#2e7d32'>${nr}</td><td>${jira}</td><td style='color:#f57c00'>${disc}</td></tr>" >> consolidated-report.html
+            echo "<tr onclick=\"showTab('${COMP}')\" style='cursor:pointer'><td><strong>${COMP}</strong></td><td>${total_cves}</td><td style='color:#d32f2f;font-weight:600'>${fixable}</td><td style='color:#2e7d32'>${nr}</td><td>${jira}</td><td style='color:#f57c00'>${disc}</td></tr>" >> consolidated-report.html
           done
-          echo "<tr style='background:#24292e;color:#fff;font-weight:700'><td>Total</td><td></td><td>${t_total}</td><td style='color:#ff8a80'>${t_fix}</td><td style='color:#a5d6a7'>${t_nr}</td><td>${t_jira}</td><td style='color:#ffcc80'>${t_disc}</td></tr>" >> consolidated-report.html
+          echo "<tr style='background:#24292e;color:#fff;font-weight:700'><td>Total</td><td>${t_total}</td><td style='color:#ff8a80'>${t_fix}</td><td style='color:#a5d6a7'>${t_nr}</td><td>${t_jira}</td><td style='color:#ffcc80'>${t_disc}</td></tr>" >> consolidated-report.html
           echo '</tbody></table>' >> consolidated-report.html
           echo '</div></div>' >> consolidated-report.html
 
-          # Cross-component CVEs table
-          shared_cves=$(cut -d' ' -f1 /tmp/all-cves.txt | sort | uniq -c | awk '$1 > 1 {print $2}')
+          # Cross-component CVEs table (compact with per-component versions)
+          shared_cves=$(cut -d' ' -f1 /tmp/all-cves.txt | sort | uniq -c | sort -rn | awk '$1 > 1 {print $2}')
           if [ -n "$shared_cves" ]; then
             echo '<div style="margin-top:24px">' >> consolidated-report.html
             echo "<h3>CVEs Affecting Multiple Components (${t_shared})</h3>" >> consolidated-report.html
-            echo '<table><thead><tr><th>CVE</th><th>Components</th></tr></thead><tbody>' >> consolidated-report.html
-            echo "$shared_cves" | while read cve; do
-              comps=$(grep "^${cve} " /tmp/all-cves.txt | awk '{print $2}' | sort | paste -sd, -)
-              echo "<tr><td><a href=\"https://www.cve.org/CVERecord?id=${cve}\">${cve}</a></td><td>${comps}</td></tr>" >> consolidated-report.html
+            echo '<table style="font-size:12px"><thead><tr><th>CVE</th><th>Components (versions)</th><th>#</th></tr></thead><tbody>' >> consolidated-report.html
+            echo "$shared_cves" | head -50 | while read cve; do
+              comp_versions=""
+              count=0
+              for f in *-scan.txt; do
+                if grep -q "$cve" "$f" 2>/dev/null; then
+                  COMP=$(basename "$f" -scan.txt)
+                  vers=$(grep "$cve" "$f" | grep -oP 'Fix on [0-9.,main ]+' | grep -oP '[0-9]+\.[0-9]+|main' | sort -V | uniq | paste -sd, -)
+                  if [ -z "$vers" ] && grep -q "${cve}.*Fix latest" "$f"; then vers="main"; fi
+                  if [ -n "$vers" ]; then
+                    comp_versions="${comp_versions:+$comp_versions, }${COMP}(${vers})"
+                  else
+                    comp_versions="${comp_versions:+$comp_versions, }${COMP}"
+                  fi
+                  count=$((count + 1))
+                fi
+              done
+              cve_url="https://www.cve.org/CVERecord?id=${cve}"
+              if echo "$cve" | grep -q "^GHSA"; then
+                cve_url="https://github.com/advisories/${cve}"
+              fi
+              echo "<tr><td><a href=\"${cve_url}\">${cve}</a></td><td style='font-size:11px'>${comp_versions}</td><td>${count}</td></tr>" >> consolidated-report.html
             done
             echo '</tbody></table></div>' >> consolidated-report.html
           fi
