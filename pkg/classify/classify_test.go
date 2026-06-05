@@ -33,16 +33,17 @@ func TestClassify_BlockedByGo_HighSeverity(t *testing.T) {
 	in := Input{
 		IsGoVuln:     true,
 		IsReachable:  true,
-		FixGoVersion: "1.25.9",
+		FixGoVersion: "1.28.0",
 		CurrentGo:    "1.25.3",
 		DownstreamGo: "1.25.3",
+		LatestGo:     "1.26.3",
 		CVSS:         8.0,
 		SupportPhase: types.PhaseGA,
 	}
 
 	class, priority, _ := Classify(in)
 	if class != types.BlockedByGo {
-		t.Errorf("expected blocked-by-go, got %s", class)
+		t.Errorf("expected blocked-by-go (fix needs unreleased Go 1.28), got %s", class)
 	}
 	if priority != types.PriorityCritical {
 		t.Errorf("expected Critical (reachable + high CVSS + GA), got %s", priority)
@@ -54,19 +55,38 @@ func TestClassify_BlockedByGo_LowPriority(t *testing.T) {
 		IsGoVuln:       true,
 		IsReachable:    false,
 		IsPackageLevel: true,
-		FixGoVersion:   "1.25.9",
+		FixGoVersion:   "1.28.0",
 		CurrentGo:      "1.20.0",
 		DownstreamGo:   "1.20.0",
+		LatestGo:       "1.26.3",
 		CVSS:           5.0,
 		SupportPhase:   types.PhaseMaintenance,
 	}
 
 	class, priority, _ := Classify(in)
 	if class != types.BlockedByGo {
-		t.Errorf("expected blocked-by-go, got %s", class)
+		t.Errorf("expected blocked-by-go (fix needs unreleased Go 1.28), got %s", class)
 	}
 	if priority != types.PriorityLow {
 		t.Errorf("expected Low (not reachable + low CVSS + maintenance), got %s", priority)
+	}
+}
+
+func TestClassify_FixableWithGoBump(t *testing.T) {
+	in := Input{
+		IsGoVuln:     true,
+		IsReachable:  true,
+		FixGoVersion: "1.25.9",
+		CurrentGo:    "1.21.0",
+		DownstreamGo: "1.21.13",
+		LatestGo:     "1.26.3",
+		CVSS:         8.0,
+		SupportPhase: types.PhaseGA,
+	}
+
+	class, _, _ := Classify(in)
+	if class != types.FixableNow {
+		t.Errorf("expected fixable (Go 1.25.9 is released, just needs bump), got %s", class)
 	}
 }
 
@@ -225,8 +245,8 @@ func TestClassify_ModuleBlockedByGo(t *testing.T) {
 	}
 
 	class, _, _ := Classify(in)
-	if class != types.BlockedByGo {
-		t.Errorf("expected blocked-by-go when dependency requires Go 1.23.0 but downstream has 1.22.4, got %s", class)
+	if class != types.FixableNow {
+		t.Errorf("expected fixable (Go 1.23 is released, dep needs bump + Go bump), got %s", class)
 	}
 }
 

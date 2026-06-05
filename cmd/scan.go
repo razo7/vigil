@@ -1503,12 +1503,16 @@ func buildAction(row combinedRow, latestVer string, cveVersions map[string][]str
 		}
 		return "\U0001F7E2 No action"
 	case types.BlockedByGo:
+		reason := row.misassignReason
 		if row.fixVersion != "" && row.currentGo != "" {
-			return fmt.Sprintf("\U0001F7E0⏳ Blocked — base image has Go %s, fix needs %s", row.currentGo, row.fixVersion)
+			if reason == "Go not released" {
+				return fmt.Sprintf("\U0001F7E0⏳ Blocked — Go %s not yet released", row.fixVersion)
+			}
+			return fmt.Sprintf("\U0001F7E0⏳ Blocked — downstream Go %s, fix needs %s (bump Containerfile)", row.currentGo, row.fixVersion)
 		} else if row.fixVersion != "" {
 			return fmt.Sprintf("\U0001F7E0⏳ Blocked — fix needs Go %s", row.fixVersion)
 		}
-		return "\U0001F7E0⏳ Blocked — waiting for Go bump in base image"
+		return "\U0001F7E0⏳ Blocked — waiting for Go version bump"
 	case types.FixableNow:
 		return buildFixAction(row.cveID, row.version, latestVer, cveVersions, row.cvss, row.fixVersion, row.currentGo, row.pkg, row.installedVersion)
 	default:
@@ -1602,6 +1606,7 @@ func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]s
 	}
 
 	fixHint := ""
+	needsGoBump := currentGo != "" && fixVersion != "" && isStdlibPackage(pkg) && compareVersionStrings(fixVersion, currentGo) > 0
 	if fixVersion != "" {
 		if isStdlibPackage(pkg) {
 			if currentGo != "" {
@@ -1620,6 +1625,9 @@ func buildFixAction(cveID, version, latestVer string, cveVersions map[string][]s
 				fixHint = " (" + shortPkg + " → " + fixVersion + ")"
 			}
 		}
+	}
+	if needsGoBump {
+		fixHint += " ⚠️ bump go.mod+Containerfile"
 	}
 
 	if len(qualified) == 0 {

@@ -13,6 +13,7 @@ type Input struct {
 	FixGoVersion        string
 	CurrentGo           string
 	DownstreamGo        string
+	LatestGo            string
 	ImageName           string
 	OperatorName        string
 	AffectsVersion      string
@@ -37,9 +38,9 @@ func Classify(in Input) (types.Classification, types.Priority, string) {
 		return types.NotReachable, types.PriorityLow, "fix functions not called by operator"
 	}
 
-	if in.FixGoVersion != "" && in.DownstreamGo != "" {
-		if CompareVersions(in.FixGoVersion, in.DownstreamGo) > 0 {
-			return types.BlockedByGo, blockedPriority(in.IsReachable, in.CVSS, in.SupportPhase), ""
+	if in.FixGoVersion != "" {
+		if in.LatestGo != "" && CompareVersions(in.FixGoVersion, in.LatestGo) > 0 {
+			return types.BlockedByGo, blockedPriority(in.IsReachable, in.CVSS, in.SupportPhase), "Go not released"
 		}
 	}
 

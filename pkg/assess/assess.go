@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -152,10 +153,12 @@ func Run(ctx context.Context, opts Options) (*types.Result, error) {
 		}
 	}
 
+	latestGo := strings.TrimPrefix(runtime.Version(), "go")
 	input := classify.Input{
 		IsGoVuln:       isGoVuln,
 		CurrentGo:      currentGo,
 		DownstreamGo:   downstreamGo,
+		LatestGo:       latestGo,
 		ImageName:      ticket.ImageName,
 		OperatorName:   operatorName,
 		AffectsVersion: ticket.OperatorVersion,
