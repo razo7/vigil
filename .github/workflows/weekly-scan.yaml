@@ -333,10 +333,11 @@ jobs:
           if [ -n "$shared_cves" ]; then
             echo '<div style="margin-top:24px">' >> consolidated-report.html
             echo "<h3>CVEs Affecting Multiple Components (${t_shared})</h3>" >> consolidated-report.html
-            echo '<table style="font-size:12px"><thead><tr><th>CVE</th><th>Components (versions)</th><th>#</th></tr></thead><tbody>' >> consolidated-report.html
+            echo '<table style="font-size:12px"><thead><tr><th>CVE</th><th>Components (versions)</th><th>Components</th><th>Versions</th></tr></thead><tbody>' >> consolidated-report.html
             echo "$shared_cves" | head -50 | while read cve; do
               comp_versions=""
-              count=0
+              comp_count=0
+              ver_count=0
               for f in *-scan.txt; do
                 if grep -q "$cve" "$f" 2>/dev/null; then
                   COMP=$(basename "$f" -scan.txt)
@@ -344,17 +345,20 @@ jobs:
                   if [ -z "$vers" ] && grep -q "${cve}.*Fix latest" "$f"; then vers="main"; fi
                   if [ -n "$vers" ]; then
                     comp_versions="${comp_versions:+$comp_versions, }${COMP}(${vers})"
+                    nv=$(echo "$vers" | tr ',' '\n' | wc -l)
+                    ver_count=$((ver_count + nv))
                   else
                     comp_versions="${comp_versions:+$comp_versions, }${COMP}"
+                    ver_count=$((ver_count + 1))
                   fi
-                  count=$((count + 1))
+                  comp_count=$((comp_count + 1))
                 fi
               done
               cve_url="https://www.cve.org/CVERecord?id=${cve}"
               if echo "$cve" | grep -q "^GHSA"; then
                 cve_url="https://github.com/advisories/${cve}"
               fi
-              echo "<tr><td><a href=\"${cve_url}\">${cve}</a></td><td style='font-size:11px'>${comp_versions}</td><td>${count}</td></tr>" >> consolidated-report.html
+              echo "<tr><td><a href=\"${cve_url}\">${cve}</a></td><td style='font-size:11px'>${comp_versions}</td><td>${comp_count}</td><td>${ver_count}</td></tr>" >> consolidated-report.html
             done
             echo '</tbody></table></div>' >> consolidated-report.html
           fi
